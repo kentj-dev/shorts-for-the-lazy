@@ -8,6 +8,9 @@
   const IDLE_FALLBACK_INTERVAL_MS = 2000;
   const ACTIVE_VIDEO_CHANGE_DEBOUNCE_MS = 80;
   const NAVIGATION_VERIFY_MS = 900;
+  const WATCHED_THRESHOLD_SECONDS = 1;
+  const WATCH_TIME_FLUSH_SECONDS = 5;
+  const MAX_PLAYBACK_SAMPLE_SECONDS = 2;
   const RELEVANT_MUTATION_SELECTOR =
     'video, ytd-shorts, ytd-reel-video-renderer, .navigation-container, #navigation-button-down';
 
@@ -24,6 +27,12 @@
   let fallbackTimer = null;
   let statusHost = null;
   let statusButton = null;
+  let statusCountdown = null;
+  let currentShortWatchSeconds = 0;
+  let countedCurrentShort = false;
+  let pendingWatchSeconds = 0;
+  let lastPlaybackSample = null;
+  let playbackWasActive = false;
 
   function isShortsPage() {
     return location.pathname.startsWith('/shorts/');
@@ -35,6 +44,7 @@
       const remainingSeconds = Math.max(0, Math.ceil(video.duration - video.currentTime));
       text = remainingSeconds > 999 ? '999+' : String(remainingSeconds);
     }
+    updateInjectedCountdown(video);
     if (text === lastBadgeText || !extensionContextValid) return;
     lastBadgeText = text;
     try {
@@ -49,6 +59,15 @@
     } catch {
       deactivateStaleInstance();
     }
+  }
+
+  function updateInjectedCountdown(video = watchedVideo) {
+    if (!statusCountdown) return;
+    const shouldShow = extensionContextValid && settings.enabled && isShortsPage() &&
+      video && Number.isFinite(video.duration) && video.duration > 0;
+    statusCountdown.textContent = shouldShow
+      ? String(Math.max(0, Math.ceil(video.duration - video.currentTime)))
+      : '';
   }
 
   function deactivateStaleInstance() {
@@ -70,6 +89,50 @@
 
   function handleBadgeProgress() {
     updateBadge(watchedVideo);
+  }
+
+  function sendStats(delta) {
+    if (!extensionContextValid) return;
+    try {
+      const result = chrome.runtime.sendMessage({ type: 'ADD_DAILY_STATS', delta });
+      result?.catch?.(() => {
+        if (!chrome.runtime?.id) deactivateStaleInstance();
+      });
+    } catch {
+      deactivateStaleInstance();
+    }
+  }
+
+  function flushWatchTime() {
+    if (pendingWatchSeconds <= 0) return;
+    const watchSeconds = pendingWatchSeconds;
+    pendingWatchSeconds = 0;
+    sendStats({ watchSeconds });
+  }
+
+  function isVideoActivelyPlaying(video) {
+    return Boolean(
+      video && !video.paused && !video.ended && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      !document.hidden && isShortsPage() && video === watchedVideo
+    );
+  }
+
+  function samplePlaybackTime() {
+    const now = performance.now();
+    if (playbackWasActive && lastPlaybackSample !== null) {
+      const elapsed = Math.min(MAX_PLAYBACK_SAMPLE_SECONDS, Math.max(0, (now - lastPlaybackSample) / 1000));
+      pendingWatchSeconds += elapsed;
+      currentShortWatchSeconds += elapsed;
+    }
+
+    lastPlaybackSample = now;
+    playbackWasActive = isVideoActivelyPlaying(watchedVideo);
+
+    if (!countedCurrentShort && currentShortWatchSeconds >= WATCHED_THRESHOLD_SECONDS) {
+      countedCurrentShort = true;
+      sendStats({ shortsWatched: 1 });
+    }
+    if (pendingWatchSeconds >= WATCH_TIME_FLUSH_SECONDS) flushWatchTime();
   }
 
   function isElementVisible(element) {
@@ -134,6 +197,7 @@
     statusHost?.remove();
     statusHost = null;
     statusButton = null;
+    statusCountdown = null;
   }
 
   function updateInjectedStatus() {
@@ -174,11 +238,14 @@
       <style>
         :host { position: relative; z-index: 20; display: block; width: 56px; height: 56px; overflow: visible; font-family: Roboto, Arial, sans-serif; pointer-events: auto !important; }
         button { position: relative; z-index: 1; display: grid; width: 56px; height: 56px; margin: 0; padding: 0; place-items: center; border: 0; color: white; background: transparent; cursor: pointer; pointer-events: auto !important; touch-action: manipulation; }
-        .circle { display: grid; width: 56px; height: 56px; place-items: center; border-radius: 50%; background: rgba(255,255,255,.1); transition: background .15s, transform .15s; }
+        .circle { position: relative; display: grid; width: 56px; height: 56px; place-items: center; border-radius: 50%; background: rgba(255,255,255,.1); transition: background .15s, transform .15s; }
         button:hover .circle { background: rgba(255,255,255,.2); }
         button:active .circle { transform: scale(.94); }
         img { display: none; width: 24px; height: 24px; filter: brightness(0) invert(1); }
         button[data-state="active"] .down, button[data-state="paused"] .pause, button[data-state="refresh"] .refresh { display: block; }
+        button[data-state="active"] .down { transform: translateY(-6px); }
+        .countdown { position: absolute; top: 35px; left: 50%; min-width: 24px; color: white; font-size: 11px; font-weight: 600; line-height: 12px; text-align: center; transform: translateX(-50%); }
+        button:not([data-state="active"]) .countdown, .countdown:empty { display: none; }
         .label { display: none; }
         .tooltip { position: absolute; z-index: 10; top: 10px; right: 66px; width: max-content; max-width: 180px; padding: 8px 10px; border-radius: 4px; color: white; background: rgba(80,80,80,.96); font-size: 12px; font-weight: 500; line-height: 16px; pointer-events: none; opacity: 0; transform: translateX(4px); transition: opacity .12s, transform .12s; }
         button:hover .tooltip, button:focus-visible .tooltip { opacity: 1; transform: translateX(0); }
@@ -188,6 +255,7 @@
           <img class="down" src="${downUrl}" alt="">
           <img class="pause" src="${pauseUrl}" alt="">
           <img class="refresh" src="${refreshUrl}" alt="">
+          <span class="countdown" aria-hidden="true"></span>
         </span>
         <span class="label">Auto Scroll</span>
         <span class="tooltip" role="tooltip">Pause auto-scroll</span>
@@ -212,6 +280,8 @@
       }
     });
     statusButton = button;
+    statusCountdown = shadow.querySelector('.countdown');
+    updateInjectedCountdown();
     return host;
   }
 
@@ -231,6 +301,7 @@
       navigationContainer.insertBefore(statusHost, downButton);
     }
     updateInjectedStatus();
+    updateInjectedCountdown();
   }
 
   function cancelPendingAdvance({ rearm = false } = {}) {
@@ -265,6 +336,8 @@
   }
 
   function unwatchVideo() {
+    samplePlaybackTime();
+    flushWatchTime();
     stopEndMonitor();
     if (watchedVideo) {
       watchedVideo.removeEventListener('timeupdate', handleVideoProgress);
@@ -272,8 +345,14 @@
       watchedVideo.removeEventListener('playing', handleVideoProgress);
       watchedVideo.removeEventListener('timeupdate', handleBadgeProgress);
       watchedVideo.removeEventListener('durationchange', handleBadgeProgress);
+      watchedVideo.removeEventListener('pause', samplePlaybackTime);
+      watchedVideo.removeEventListener('waiting', samplePlaybackTime);
+      watchedVideo.removeEventListener('seeking', samplePlaybackTime);
+      watchedVideo.removeEventListener('ended', samplePlaybackTime);
     }
     watchedVideo = null;
+    lastPlaybackSample = null;
+    playbackWasActive = false;
     updateBadge(null);
   }
 
@@ -288,6 +367,8 @@
     watchedVideo = video;
     watchedShortKey = nextKey;
     hasTriggeredForCurrentShort = false;
+    currentShortWatchSeconds = 0;
+    countedCurrentShort = false;
 
     if (video) {
       video.addEventListener('timeupdate', handleVideoProgress, { passive: true });
@@ -295,7 +376,12 @@
       video.addEventListener('playing', handleVideoProgress, { passive: true });
       video.addEventListener('timeupdate', handleBadgeProgress, { passive: true });
       video.addEventListener('durationchange', handleBadgeProgress, { passive: true });
+      video.addEventListener('pause', samplePlaybackTime, { passive: true });
+      video.addEventListener('waiting', samplePlaybackTime, { passive: true });
+      video.addEventListener('seeking', samplePlaybackTime, { passive: true });
+      video.addEventListener('ended', samplePlaybackTime, { passive: true });
       updateBadge(video);
+      samplePlaybackTime();
       handleVideoProgress();
     }
   }
@@ -347,7 +433,11 @@
   }
 
   function handleVisibilityChange() {
-    if (document.hidden) stopEndMonitor();
+    samplePlaybackTime();
+    if (document.hidden) {
+      flushWatchTime();
+      stopEndMonitor();
+    }
     else {
       refreshActiveVideo();
       handleVideoProgress();
@@ -356,6 +446,7 @@
 
   function handleVideoProgress() {
     const video = watchedVideo;
+    samplePlaybackTime();
     if (!settings.enabled || !isShortsPage() || !video || video.paused || hasTriggeredForCurrentShort) return;
     if (!Number.isFinite(video.duration) || video.duration <= 0) return;
 
@@ -449,6 +540,7 @@
   }
 
   function goToNextShort(sourceVideo, sourceKey) {
+    sendStats({ autoScrolled: 1 });
     const nextButton = findNextButton();
     if (nextButton) {
       nextButton.click();

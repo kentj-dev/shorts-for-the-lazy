@@ -7,6 +7,32 @@ const delayInput = document.querySelector("#delay");
 const delayOutput = document.querySelector("#delay-output");
 const statusText = document.querySelector("#status-text");
 const statusDot = document.querySelector("#status-dot");
+const statShorts = document.querySelector("#stat-shorts");
+const statSeconds = document.querySelector("#stat-seconds");
+const statScrolls = document.querySelector("#stat-scrolls");
+
+function getTodayStatsKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `dailyStats:${year}-${month}-${day}`;
+}
+
+function renderStats(stats = {}) {
+  statShorts.textContent = String(Math.floor(Math.max(0, Number(stats.shortsWatched) || 0)));
+  statSeconds.textContent = String(Math.floor(Math.max(0, Number(stats.watchSeconds) || 0)));
+  statScrolls.textContent = String(Math.floor(Math.max(0, Number(stats.autoScrolled) || 0)));
+}
+
+async function loadTodayStats() {
+  try {
+    const key = getTodayStatsKey();
+    const stored = await chrome.storage.local.get(key);
+    renderStats(stored[key]);
+  } catch {
+    renderStats();
+  }
+}
 
 function clampDelay(value) {
   return Math.round(Math.min(5, Math.max(0, Number(value) || 0)) * 10) / 10;
@@ -85,6 +111,7 @@ async function initialize() {
   });
 
   await updateStatus();
+  await loadTodayStats();
 }
 
 enabledInput.addEventListener("change", saveEnabled);
@@ -95,6 +122,11 @@ document.querySelector("#decrease").addEventListener("click", () => saveDelay(Nu
 document.querySelector("#increase").addEventListener("click", () => saveDelay(Number(delayInput.value) + 0.1));
 document.querySelector("#shortcuts").addEventListener("click", () => chrome.tabs.create({ url: "chrome://extensions/shortcuts" }));
 chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local") {
+    const todayChange = changes[getTodayStatsKey()];
+    if (todayChange) renderStats(todayChange.newValue);
+    return;
+  }
   if (areaName !== "sync") return;
   if (changes.enabled) {
     enabledInput.checked = changes.enabled.newValue !== false;

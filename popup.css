@@ -218,6 +218,46 @@ body.transitions-ready .slider::before {
   color: #a7a9aa;
   font-size: 13px;
 }
+.stats-section {
+  padding-top: 14px;
+  border-top: 1px solid #343739;
+}
+.stats-section h2 {
+  margin: 0 0 11px;
+  color: #a7a9aa;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.stats-grid div {
+  min-width: 0;
+  padding: 10px 7px;
+  border: 1px solid #343739;
+  border-radius: 8px;
+  background: #151718;
+  text-align: center;
+}
+.stats-grid strong,
+.stats-grid span {
+  display: block;
+}
+.stats-grid strong {
+  margin-bottom: 4px;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+}
+.stats-grid span {
+  color: #929597;
+  font-size: 10px;
+  line-height: 1.25;
+}
 #status-dot {
   width: 10px;
   height: 10px;
