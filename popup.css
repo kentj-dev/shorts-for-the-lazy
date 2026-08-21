@@ -1,0 +1,240 @@
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter/Inter-VariableFont_opsz,wght.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  font-family: 'Inter', system-ui, sans-serif;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  width: 320px;
+  margin: 0;
+  background: #101214;
+  color: #f5f5f5;
+}
+button,
+input {
+  font: inherit;
+}
+.card {
+  visibility: hidden;
+  padding: 18px;
+  background: #181a1b;
+}
+body.settings-ready .card {
+  visibility: visible;
+}
+.header {
+  display: flex;
+  align-items: start;
+  gap: 11px;
+  margin-bottom: 21px;
+}
+.logo {
+  width: 46px;
+  height: 46px;
+  border: 1px solid #3a3d3f;
+  border-radius: 13px;
+}
+.heading {
+  min-width: 0;
+  flex: 1;
+}
+.heading h1 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.1;
+  letter-spacing: -0.3px;
+}
+.heading p {
+  margin: 3px 0 0;
+  color: #a6a7a9;
+  font-size: 14px;
+}
+.icon-button {
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.icon-button:hover {
+  opacity: 1;
+}
+.icon-button img {
+  width: 100%;
+  height: 100%;
+  filter: brightness(0) invert(1);
+  opacity: 0.78;
+}
+.icon-button:hover img {
+  opacity: 1;
+}
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 19px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.badge-row {
+  margin-top: -7px;
+}
+.switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 22px;
+  cursor: pointer;
+}
+.switch input {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.slider {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 999px;
+  background: #55595c;
+  transition: none;
+}
+.slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 2px;
+  top: 2px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 5px #0008;
+  transition: none;
+}
+body.transitions-ready .slider,
+body.transitions-ready .slider::before {
+  transition: 0.18s;
+}
+.switch input:checked + .slider {
+  background: #ff1647;
+}
+.switch input:checked + .slider::before {
+  transform: translateX(18px);
+}
+.switch input:focus-visible + .slider {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+.delay-section > label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+.delay-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.delay-value {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #aaa;
+}
+.delay-value output {
+  min-width: 56px;
+  padding: 7px 9px;
+  border: 1px solid #3e4245;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 17px;
+}
+.delay-value span {
+  font-size: 13px;
+}
+.step-buttons {
+  display: flex;
+  gap: 8px;
+}
+.step-buttons button {
+  width: 36px;
+  height: 36px;
+  padding: 10px;
+  border: 1px solid #3c4043;
+  border-radius: 8px;
+  background: #1d2022;
+  cursor: pointer;
+}
+.step-buttons button:hover {
+  background: #292d30;
+}
+.step-buttons img {
+  width: 100%;
+  height: 100%;
+  filter: brightness(0) invert(1);
+  opacity: 0.78;
+}
+.step-buttons button:hover img {
+  opacity: 1;
+}
+#delay {
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  accent-color: #ff1647;
+  cursor: pointer;
+}
+.range-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: #85888a;
+  font-size: 11px;
+}
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 17px;
+  padding: 13px 0;
+  border-top: 1px solid #343739;
+  color: #a7a9aa;
+  font-size: 13px;
+}
+#status-dot {
+  width: 10px;
+  height: 10px;
+  margin-right: 3px;
+  border-radius: 50%;
+  background: #777;
+}
+#status-dot.active {
+  background: #39c65a;
+  box-shadow: 0 0 10px #39c65a55;
+}
+#status-dot.inactive {
+  background: #ff9f0a;
+}
+#status-text {
+  color: #39c65a;
+}
+#status-text.inactive {
+  color: #b1b3b4;
+}
