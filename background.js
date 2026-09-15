@@ -1,7 +1,14 @@
 'use strict';
 
 const DAILY_STATS_PREFIX = 'dailyStats:';
+const INSTALL_PAGE_URL = 'https://apps.hamiken.com/apps/shorts-for-the-lazy/thank-you';
 let statsUpdateQueue = Promise.resolve();
+
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') {
+    void chrome.tabs.create({ url: INSTALL_PAGE_URL });
+  }
+});
 
 function getLocalDateKey(date = new Date()) {
   const year = date.getFullYear();
