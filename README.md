@@ -4,19 +4,24 @@ A lightweight Manifest V3 extension that advances to the next YouTube Short when
 
 ## Install
 
-1. Open `chrome://extensions` (or your browser's equivalent extension page).
-2. Enable **Developer mode**.
-3. Click **Load unpacked**.
-4. Select this project directory.
-5. If YouTube was already open when you installed the extension, refresh that tab once.
+1. Run `npm install`, then `npm run build`. This writes the extension to `dist/`.
+2. Open `chrome://extensions` (or your browser's equivalent extension page).
+3. Enable **Developer mode**.
+4. Click **Load unpacked**.
+5. Select the `dist/` directory.
+6. If YouTube was already open when you installed the extension, refresh that tab once.
 
-No build or dependency installation is required.
+While developing, `npm run dev` rebuilds on every change; reload the extension in `chrome://extensions` to pick it up. `npm run typecheck` checks the popup's TypeScript.
 
 ## Use
 
 Open `https://www.youtube.com/shorts/`, then click the extension's toolbar icon. The popup lets you turn auto-scroll and its countdown badge on or off, and set a delay from 0 to 5 seconds (0 seconds by default). Settings are synchronized with `chrome.storage.sync` and apply to open YouTube tabs immediately.
 
-Press `Alt+Shift+S` (`Command+Shift+S` on macOS) to toggle auto-scroll without opening the popup. Use the popup's gear button or `chrome://extensions/shortcuts` to customize the shortcut.
+Press `Alt+Shift+S` (`Command+Shift+S` on macOS) on a YouTube tab to toggle auto-scroll without opening the popup. To change it, open the popup's gear button, then **Keyboard Shortcut → Change** and press the new combination. It must include Ctrl, Alt or Command so it never fires while typing, and it is ignored while a text field has focus.
+
+Chrome does not let an extension change its own command shortcuts, so that in-page shortcut is handled by the content script. The extension also registers the same toggle as a Chrome command, which works in any tab; it can only be changed at `chrome://extensions/shortcuts`. If both are set to the same keys, one press still toggles once.
+
+The popup's Settings page also holds your **Lazy Name** (a display name saved for a future leaderboard), the System / Light / Dark appearance choice, and a link to the maker.
 
 On a Shorts page, an auto-scroll control is inserted between YouTube's Up and Down navigation buttons. The down icon means auto-scroll is active, pause means it is disabled, and refresh appears only when the tab must reconnect after the extension is reloaded. Click the control to pause, resume, or refresh as indicated.
 
@@ -31,13 +36,12 @@ When a playing video is within 160 ms of its duration, the extension schedules e
 ## Files
 
 ```text
-manifest.json  Extension metadata, permissions, popup, and content-script registration
-content.js     Active-video detection, end detection, SPA monitoring, and navigation
-background.js  Per-tab toolbar countdown badge
-popup.html     Popup structure
-popup.css      Popup styling
-popup.js       Settings persistence and live status
-README.md      Installation and implementation notes
+src/manifest.json              Extension metadata, permissions, popup, and content-script registration
+src/content/content.js         Active-video detection, end detection, SPA monitoring, navigation, in-page shortcut
+src/background/background.js   Toolbar countdown badge, daily stats, and the auto-scroll toggle
+src/images/                    Files loaded by URL: toolbar icon and the on-page control's icons
+src/popup/                     The popup: React + Tailwind + shadcn/ui components
+src/shared/                    Settings, shortcut, and stats helpers used by the popup
+src/styles/popup.css           Theme tokens (light and dark) and base styles
+scripts/build.mjs              Vite build for the popup, content script, and service worker
 ```
-
-Icons are intentionally omitted; Chromium supplies a generic extension icon and the unpacked extension remains valid.

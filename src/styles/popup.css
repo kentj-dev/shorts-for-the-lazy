@@ -1,0 +1,198 @@
+@import "tailwindcss";
+
+/* Inter, self-hosted through @fontsource so the popup never calls out to a
+ * font CDN. Latin subsets only. */
+@import "@fontsource/inter/latin-400.css";
+@import "@fontsource/inter/latin-500.css";
+@import "@fontsource/inter/latin-600.css";
+
+/* Tailwind v4 scans sources relative to this file; src/ covers the popup. */
+@source '../';
+
+/*
+ * Dark mode is a `.dark` class on <html> rather than prefers-color-scheme,
+ * because the popup offers its own System / Light / Dark choice. For "System",
+ * src/popup/lib/theme.ts follows the OS setting and sets the class itself.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * The same neutral tokens as the I'm an Introvert popup, with YouTube red as
+ * the one accent instead of green.
+ */
+:root {
+    color-scheme: light;
+    --edge: #a1a5b0;
+    --radius: 0.875rem;
+
+    --background: #f5f5f7;
+    --foreground: #15161a;
+    --card: #ffffff;
+    --card-foreground: #15161a;
+
+    --primary: #e8173f;
+    --primary-foreground: #ffffff;
+    --secondary: #f2f3f5;
+    --secondary-foreground: #2b2d33;
+    --muted: #f2f3f5;
+    --muted-foreground: #71747d;
+    --accent: #f2f3f5;
+    --accent-foreground: #15161a;
+    --destructive: #d4432e;
+
+    --border: #ebebef;
+    --input: #dfe0e5;
+    --ring: #e8173f;
+
+    --tint-brand: #fdeef1;
+    --tint-brand-foreground: #c8102e;
+    --success: #16a34a;
+    --warning: #d97706;
+}
+
+.dark {
+    color-scheme: dark;
+    --edge: #3a3c43;
+
+    --background: #0f1012;
+    --foreground: #ececef;
+    --card: #18191c;
+    --card-foreground: #ececef;
+
+    --primary: #ff1647;
+    --primary-foreground: #ffffff;
+    --secondary: #232429;
+    --secondary-foreground: #d9dade;
+    --muted: #232429;
+    --muted-foreground: #9a9ca5;
+    --accent: #26272c;
+    --accent-foreground: #ececef;
+    --destructive: #f07162;
+
+    --border: #2a2b30;
+    --input: #3a3c43;
+    --ring: #ff1647;
+
+    --tint-brand: #2a1419;
+    --tint-brand-foreground: #ff8fa6;
+    --success: #39c65a;
+    --warning: #ff9f0a;
+}
+
+@theme inline {
+    --color-edge: var(--edge);
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-tint-brand: var(--tint-brand);
+    --color-tint-brand-foreground: var(--tint-brand-foreground);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+
+    --radius-sm: calc(var(--radius) - 6px);
+    --radius-md: calc(var(--radius) - 4px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+
+    --font-sans:
+        "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer base {
+    * {
+        border-color: var(--color-border);
+    }
+}
+
+/*
+ * Deliberately NOT inside @layer.
+ *
+ * Chrome injects its own author stylesheet into every extension page:
+ *   body { font-family: "Segoe UI", Tahoma, sans-serif; font-size: 75%; }
+ * Unlayered rules beat every cascade layer, so the same declarations sitting
+ * in Tailwind's `base` layer lose and the popup renders in Segoe UI at 12px.
+ * Keeping these unlayered — and using `html body`, which also outranks the
+ * injected `body` selector on specificity — wins regardless of source order.
+ */
+html,
+body {
+    margin: 0;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+}
+
+/*
+ * Scrollbars: thin, quiet, no arrow buttons.
+ *
+ * The popup is Chromium-only, so the -webkit pseudo-elements are the right
+ * tool here. Do not also set the standard `scrollbar-width` /
+ * `scrollbar-color` properties: when those are present Chrome ignores these
+ * rules entirely, and the chunky default comes back.
+ *
+ * The thumb is drawn inside a transparent border so it reads as a 4px pill
+ * with breathing room rather than a bar wedged against the edge.
+ */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: color-mix(
+        in srgb,
+        var(--color-foreground) 14%,
+        transparent
+    );
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(
+        in srgb,
+        var(--color-foreground) 26%,
+        transparent
+    );
+}
+
+::-webkit-scrollbar-thumb:active {
+    background-color: color-mix(
+        in srgb,
+        var(--color-foreground) 34%,
+        transparent
+    );
+}
+
+/* Arrow buttons and the corner square are pure noise at this size. */
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-corner {
+    display: none;
+}
+
+html body {
+    /* Chrome sizes the popup from the document. */
+    width: 384px;
+    font-family: var(--font-sans);
+    /* Explicit, so the injected 75% cannot change what unsized text inherits. */
+    font-size: 14px;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+}
