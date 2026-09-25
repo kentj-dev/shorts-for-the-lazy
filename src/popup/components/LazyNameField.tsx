@@ -1,6 +1,7 @@
 import { Button } from "@/popup/components/ui/button";
 import { Input } from "@/popup/components/ui/input";
 import { cn } from "@/popup/lib/utils";
+import { isOffensiveLazyName } from "@/shared/lazyName";
 import {
     LAZY_NAME_MAX,
     LAZY_NAME_PATTERN,
@@ -10,8 +11,9 @@ import { Dices, Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 const RULES = "3–20 letters, numbers, spaces, - or _.";
+const NOT_ALLOWED = "Let's keep it friendly. Try another name.";
 
-function suggestLazyName(): string {
+function randomLazyName(): string {
     const moods = [
         "Sleepy",
         "Comfy",
@@ -37,49 +39,76 @@ function suggestLazyName(): string {
     return `${pick(moods)}${pick(critters)}${Math.floor(Math.random() * 90) + 10}`;
 }
 
-type Hint = { text: string; tone: "plain" | "error" | "saved" };
+/** A random name that passes the filter (the number could be "69"). */
+function suggestLazyName(): string {
+    let name = randomLazyName();
+    while (isOffensiveLazyName(name)) name = randomLazyName();
+    return name;
+}
+
+export type Hint = { text: string; tone: "plain" | "error" | "saved" };
 
 interface LazyNameFieldProps {
+    /** The name on the Lazyboard. Shown locked once set. */
     value: string;
-    onSave: (next: string) => Promise<void>;
+    /** What the input starts with while no name is set. */
+    initialDraft?: string;
+    /** Shown next to the locked name. */
+    lockedNote?: string;
+    /**
+     * Called with a valid, friendly name. Resolves to a hint to show, or
+     * null once the name is taken care of.
+     */
+    onSubmit: (name: string) => Promise<Hint | null>;
 }
 
 /**
- * The name people will show up as on the leaderboard. Saving asks for a
- * second click, then locks the name until the extension is reinstalled.
+ * The name people will show up as on the Lazyboard. Submitting a name hands
+ * it to `onSubmit`, which asks for agreement to the privacy notice before
+ * anything is sent. Once joined the name is locked until a reinstall.
  */
-export function LazyNameField({ value, onSave }: LazyNameFieldProps) {
-    const [draft, setDraft] = useState(value);
+export function LazyNameField({
+    value,
+    initialDraft = "",
+    lockedNote = "Locked in for good",
+    onSubmit,
+}: LazyNameFieldProps) {
+    const [draft, setDraft] = useState(value || initialDraft);
     const [hint, setHint] = useState<Hint>({ text: RULES, tone: "plain" });
-    const [confirming, setConfirming] = useState(false);
+    const [busy, setBusy] = useState(false);
     const input = useRef<HTMLInputElement>(null);
 
     // Follow a change made elsewhere, but never over what is being typed.
     useEffect(() => {
-        if (document.activeElement !== input.current) setDraft(value);
-    }, [value]);
+        if (document.activeElement !== input.current) {
+            setDraft(value || initialDraft);
+        }
+    }, [value, initialDraft]);
 
     const submit = async (event: React.FormEvent): Promise<void> => {
         event.preventDefault();
+        if (busy) return;
         const next = normalizeLazyName(draft);
         setDraft(next);
         if (!LAZY_NAME_PATTERN.test(next)) {
             setHint({ text: RULES, tone: "error" });
             return;
         }
-        if (!confirming) {
-            setConfirming(true);
-            setHint({
-                text: `"${next}" is forever. Only a reinstall can change it.`,
-                tone: "error",
-            });
+        if (isOffensiveLazyName(next)) {
+            setHint({ text: NOT_ALLOWED, tone: "error" });
             return;
         }
-        setConfirming(false);
+        setBusy(true);
         try {
-            await onSave(next);
+            const result = await onSubmit(next);
+            if (result) setHint(result);
         } catch {
-            setHint({ text: "Couldn't save. Try again.", tone: "error" });
+            setHint({
+                text: "Something went wrong. Try again.",
+                tone: "error",
+            });
+        } finally {
+            setBusy(false);
         }
     };
 
@@ -95,7 +124,7 @@ export function LazyNameField({ value, onSave }: LazyNameFieldProps) {
                     {value}
                 </span>
                 <span className="shrink-0 text-[11.5px] text-muted-foreground">
-                    Locked in for good
+                    {lockedNote}
                 </span>
             </div>
         );
@@ -121,7 +150,6 @@ export function LazyNameField({ value, onSave }: LazyNameFieldProps) {
                         aria-invalid={hint.tone === "error"}
                         onChange={(event) => {
                             setDraft(event.target.value);
-                            setConfirming(false);
                             setHint({ text: RULES, tone: "plain" });
                         }}
                         className="h-8 border-edge pe-9 text-[13.5px] md:text-[13.5px]"
@@ -132,9 +160,8 @@ export function LazyNameField({ value, onSave }: LazyNameFieldProps) {
                         title="Suggest a name"
                         onClick={() => {
                             setDraft(suggestLazyName());
-                            setConfirming(false);
                             setHint({
-                                text: "Like it? Hit Save.",
+                                text: "Like it? Hit Join.",
                                 tone: "plain",
                             });
                             input.current?.focus();
@@ -144,13 +171,8 @@ export function LazyNameField({ value, onSave }: LazyNameFieldProps) {
                         <Dices className="size-4" strokeWidth={1.9} />
                     </button>
                 </div>
-                <Button
-                    type="submit"
-                    variant={confirming ? "default" : "outline"}
-                    size="sm"
-                    className={cn("h-8", !confirming && "border-edge")}
-                >
-                    {confirming ? "Lock it in" : "Save"}
+                <Button type="submit" size="sm" disabled={busy} className="h-8">
+                    Join
                 </Button>
             </form>
             <p

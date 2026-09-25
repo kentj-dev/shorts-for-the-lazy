@@ -4,7 +4,7 @@
     "version": "1.0.0",
     "minimum_chrome_version": "114",
     "description": "Sit back and let YouTube Shorts advance automatically when each video ends.",
-    "permissions": ["storage"],
+    "permissions": ["storage", "alarms"],
     "host_permissions": ["https://www.youtube.com/*"],
     "action": {
         "default_title": "Shorts for the Lazy",

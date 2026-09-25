@@ -21,7 +21,13 @@ Press `Alt+Shift+S` (`Command+Shift+S` on macOS) on a YouTube tab to toggle auto
 
 Chrome does not let an extension change its own command shortcuts, so that in-page shortcut is handled by the content script. The extension also registers the same toggle as a Chrome command, which works in any tab; it can only be changed at `chrome://extensions/shortcuts`. If both are set to the same keys, one press still toggles once.
 
-The popup's Settings page also holds your **Lazy Name** (a display name saved for a future leaderboard), the System / Light / Dark appearance choice, and a link to the maker.
+The popup's Settings page also holds the **Lazyboard**, the System / Light / Dark appearance choice, and a link to the maker.
+
+## Lazyboard
+
+The [Global Lazyboard](https://lazyboard.hamiken.com) is an opt-in public leaderboard; its server and page live in `../lazyboard`. Nothing is sent until you pick a **Lazy Name** in Settings, press **Join**, and agree to the privacy notice in the sheet that slides up. Names are checked against a word filter in the popup, and again by the server. After joining, the service worker (`src/background/lazyboard.ts`) sends only the activity since the previous sync, roughly once an hour at a minute the server assigned. Failed syncs are retried later under the same event ID, so they are never counted twice. The server computes every total and score itself. **Leave the Lazyboard** deletes your name and stats from the server.
+
+Build with `LAZYBOARD_URL=http://localhost:8080 npm run build` to point the extension at a local server.
 
 On a Shorts page, an auto-scroll control is inserted between YouTube's Up and Down navigation buttons. The down icon means auto-scroll is active, pause means it is disabled, and refresh appears only when the tab must reconnect after the extension is reloaded. Click the control to pause, resume, or refresh as indicated.
 
@@ -39,9 +45,10 @@ When a playing video is within 160 ms of its duration, the extension schedules e
 src/manifest.json              Extension metadata, permissions, popup, and content-script registration
 src/content/content.js         Active-video detection, end detection, SPA monitoring, navigation, in-page shortcut
 src/background/background.js   Toolbar countdown badge, daily stats, and the auto-scroll toggle
+src/background/lazyboard.ts    Opt-in Lazyboard registration, hourly delta sync, leaving
 src/images/                    Files loaded by URL: toolbar icon and the on-page control's icons
 src/popup/                     The popup and the monthly stats tab (stats.html): React + Tailwind + shadcn/ui + Recharts
-src/shared/                    Settings, shortcut, and stats helpers used by the popup
+src/shared/                    Settings, shortcut, stats, Lazyboard, name filter, and privacy notice
 src/styles/popup.css           Theme tokens (light and dark) and base styles
 scripts/build.mjs              Vite build for the popup, content script, and service worker
 ```

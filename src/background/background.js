@@ -1,5 +1,7 @@
 "use strict";
 
+import { createLazyboard } from "./lazyboard";
+
 const DAILY_STATS_PREFIX = "dailyStats:";
 const INSTALL_PAGE_URL =
     "https://apps.hamiken.com/apps/shorts-for-the-lazy/thank-you";
@@ -12,10 +14,12 @@ chrome.runtime.onInstalled.addListener((details) => {
         void chrome.tabs.create({ url: INSTALL_PAGE_URL });
     }
     queueStatsUpdate(pruneOldStats).catch(() => {});
+    lazyboard.ensureScheduled().catch(() => {});
 });
 
 chrome.runtime.onStartup.addListener(() => {
     queueStatsUpdate(pruneOldStats).catch(() => {});
+    lazyboard.ensureScheduled().catch(() => {});
 });
 
 function getLocalDateKey(date = new Date()) {
@@ -50,6 +54,9 @@ function queueStatsUpdate(task) {
     return update;
 }
 
+/** Opt-in leaderboard sync. Sends nothing until the person has joined. */
+const lazyboard = createLazyboard(queueStatsUpdate);
+
 async function addDailyStats(delta) {
     await pruneOldStats();
     const key = getLocalDateKey();
@@ -66,6 +73,7 @@ async function addDailyStats(delta) {
         if (Number.isFinite(amount) && amount > 0) next[field] += amount;
     }
     await chrome.storage.local.set({ [key]: next });
+    await lazyboard.addPending(delta);
 }
 
 async function setBadgeForTab(tabId, text) {
@@ -82,6 +90,37 @@ async function setBadgeForTab(tabId, text) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Joining and leaving come from the popup only, never from a web page's tab.
+    const fromPopup = sender.id === chrome.runtime.id && !sender.tab;
+    if (message?.type === "LAZYBOARD_JOIN" && fromPopup) {
+        lazyboard
+            .join(
+                String(message.name ?? ""),
+                String(message.privacyNoticeVersion ?? ""),
+                message.shareCountry === true,
+            )
+            .then(sendResponse, () =>
+                sendResponse({ ok: false, error: "failed" }),
+            );
+        return true;
+    }
+    if (message?.type === "LAZYBOARD_SET_COUNTRY" && fromPopup) {
+        lazyboard
+            .setShareCountry(message.shareCountry === true)
+            .then(sendResponse, () =>
+                sendResponse({ ok: false, error: "failed" }),
+            );
+        return true;
+    }
+    if (message?.type === "LAZYBOARD_LEAVE" && fromPopup) {
+        lazyboard
+            .leave()
+            .then(sendResponse, () =>
+                sendResponse({ ok: false, error: "failed" }),
+            );
+        return true;
+    }
+
     if (message?.type === "TOGGLE_AUTO_SCROLL" && sender.tab?.id) {
         void toggleAutoScroll();
         return;

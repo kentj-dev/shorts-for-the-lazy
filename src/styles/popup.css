@@ -210,3 +210,99 @@ html[data-page="stats"] body {
     background-size: 22px 22px;
     background-attachment: fixed;
 }
+
+/*
+ * Sheet motion (src/popup/components/ui/sheet.tsx). Radix keeps a closing
+ * sheet mounted until its animation ends, so the exit plays too. The bottom
+ * sheet uses iOS's sheet curve; --sheet-drag lets a swipe-down dismissal
+ * finish from wherever the finger let go instead of jumping back first.
+ */
+[data-slot="sheet-overlay"][data-state="open"] {
+    animation: sheet-fade-in 260ms ease-out;
+}
+[data-slot="sheet-overlay"][data-state="closed"] {
+    animation: sheet-fade-out 220ms ease-in forwards;
+}
+[data-slot="sheet-content"][data-state="open"] {
+    animation: var(--sheet-in) 460ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+[data-slot="sheet-content"][data-state="closed"] {
+    animation: var(--sheet-out) 280ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+[data-slot="sheet-content"][data-side="bottom"] {
+    --sheet-in: sheet-in-bottom;
+    --sheet-out: sheet-out-bottom;
+}
+[data-slot="sheet-content"][data-side="top"] {
+    --sheet-in: sheet-in-top;
+    --sheet-out: sheet-out-top;
+}
+[data-slot="sheet-content"][data-side="right"] {
+    --sheet-in: sheet-in-right;
+    --sheet-out: sheet-out-right;
+}
+[data-slot="sheet-content"][data-side="left"] {
+    --sheet-in: sheet-in-left;
+    --sheet-out: sheet-out-left;
+}
+
+@keyframes sheet-fade-in {
+    from {
+        opacity: 0;
+    }
+}
+@keyframes sheet-fade-out {
+    to {
+        opacity: 0;
+    }
+}
+@keyframes sheet-in-bottom {
+    from {
+        transform: translateY(100%);
+    }
+}
+@keyframes sheet-out-bottom {
+    from {
+        transform: translateY(var(--sheet-drag, 0px));
+    }
+    to {
+        transform: translateY(100%);
+    }
+}
+@keyframes sheet-in-top {
+    from {
+        transform: translateY(-100%);
+    }
+}
+@keyframes sheet-out-top {
+    to {
+        transform: translateY(-100%);
+    }
+}
+@keyframes sheet-in-right {
+    from {
+        transform: translateX(100%);
+    }
+}
+@keyframes sheet-out-right {
+    to {
+        transform: translateX(100%);
+    }
+}
+@keyframes sheet-in-left {
+    from {
+        transform: translateX(-100%);
+    }
+}
+@keyframes sheet-out-left {
+    to {
+        transform: translateX(-100%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-slot="sheet-overlay"],
+    [data-slot="sheet-content"] {
+        animation-duration: 1ms !important;
+    }
+}

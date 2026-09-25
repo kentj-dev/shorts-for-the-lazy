@@ -25,10 +25,33 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
 const watch = process.argv.includes("--watch");
 
+/**
+ * Where the Lazyboard lives (API under /api/v1, public page at the root).
+ * Override with LAZYBOARD_URL=http://localhost:8080 for local testing, and
+ * add the extension's chrome-extension:// origin to the server's CORS_ORIGINS.
+ */
+const lazyboardUrl = (
+    process.env.LAZYBOARD_URL ?? "https://lazyboard.hamiken.com"
+).replace(/\/+$/, "");
+/**
+ * Minutes between Lazyboard syncs. Hourly in production; set
+ * LAZYBOARD_SYNC_MINUTES=1 for local testing (keep the server's
+ * RL_SYNC_PER_HOUR above 60/this).
+ */
+const syncMinutes = Number(process.env.LAZYBOARD_SYNC_MINUTES ?? 60);
+if (!(syncMinutes >= 1)) {
+    throw new Error("LAZYBOARD_SYNC_MINUTES must be a number of at least 1");
+}
+const define = {
+    __LAZYBOARD_URL__: JSON.stringify(lazyboardUrl),
+    __LAZYBOARD_SYNC_MINUTES__: JSON.stringify(syncMinutes),
+};
+
 /** The content script and the service worker share these settings. */
 const scriptBuild = (entry, outFile, format, globalName) => ({
     configFile: false,
     root,
+    define,
     resolve: { alias: { "@": path.join(root, "src") } },
     build: {
         outDir: dist,
@@ -50,6 +73,7 @@ const popupBuild = () => ({
     configFile: false,
     root: path.join(root, "src/popup"),
     base: "./",
+    define,
     resolve: { alias: { "@": path.join(root, "src") } },
     plugins: [react(), tailwindcss()],
     build: {

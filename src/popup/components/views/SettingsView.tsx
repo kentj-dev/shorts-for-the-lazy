@@ -1,6 +1,7 @@
 import buyMeACoffee from "@/assets/buymeacoffee.svg";
 import hamikenLogo from "@/assets/hamiken.png";
 import { version } from "@/popup/components/FooterNote";
+import { LazyboardSection } from "@/popup/components/LazyboardSection";
 import { SettingSection } from "@/popup/components/SettingSection";
 import { ShortcutRecorder } from "@/popup/components/ShortcutRecorder";
 import { Button } from "@/popup/components/ui/button";
@@ -57,11 +58,11 @@ export function SettingsView({
                     Settings
                 </h2>
                 <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
-                    Your look, your shortcut.
+                    Your name, your look, your shortcut.
                 </p>
             </div>
 
-            {/* Lazy Name (LazyNameField) is hidden until the leaderboard exists. */}
+            <LazyboardSection savedName={settings.lazyName} />
 
             <SettingSection
                 title="Appearance"
