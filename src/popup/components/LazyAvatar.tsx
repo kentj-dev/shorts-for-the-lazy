@@ -1,45 +1,32 @@
 import { cn } from "@/popup/lib/utils";
+import { avatarFor, type PickedAvatar } from "@/shared/avatar";
 
-/** FNV-1a, so the same name always gets the same colours. */
-function hash(text: string): number {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < text.length; i++) {
-        h ^= text.charCodeAt(i);
-        h = Math.imul(h, 0x01000193);
-    }
-    return h >>> 0;
-}
-
-/** "SleepyKoala88" → "SK". */
-export function initials(name: string): string {
-    const parts = name.match(/[A-Z]?[a-z]+|[A-Z]+(?![a-z])|[0-9]+/g) ?? [name];
-    const letters = parts.filter((p) => /[A-Za-z]/.test(p)).map((p) => p[0]);
-    return (letters.slice(0, 2).join("") || name.slice(0, 2)).toUpperCase();
-}
-
-/** A gradient disc with initials. Matches the public Lazyboard page. */
+/**
+ * An emoji on a pastel disc, drawn like the public Lazyboard page does. With
+ * no pick, the name decides (see src/shared/avatar.ts).
+ */
 export function LazyAvatar({
     name,
+    pick,
     className,
 }: {
     name: string;
+    pick?: PickedAvatar | null;
     className?: string;
 }) {
-    const h = hash(name.toLowerCase());
-    const hue = h % 360;
-    const hue2 = (hue + 40 + ((h >> 9) % 80)) % 360;
+    const look = avatarFor(name, pick?.emoji, pick?.color);
     return (
         <span
             aria-hidden
             className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold text-white",
+                "@container flex size-9 shrink-0 items-center justify-center rounded-full shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)] select-none",
                 className,
             )}
-            style={{
-                backgroundImage: `linear-gradient(135deg, hsl(${hue} 78% 58%), hsl(${hue2} 72% 44%))`,
-            }}
+            style={{ backgroundColor: look.background }}
         >
-            {initials(name)}
+            <span className="font-emoji text-[56cqw] leading-none">
+                {look.emoji}
+            </span>
         </span>
     );
 }

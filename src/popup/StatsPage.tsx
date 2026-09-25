@@ -6,8 +6,9 @@ import { StatCard } from "@/popup/components/TodayStats";
 import { Card } from "@/popup/components/ui/card";
 import { useMonthStats } from "@/popup/hooks/useMonthStats";
 import { useTheme } from "@/popup/hooks/useTheme";
+import { LAZYBOARD_URL } from "@/shared/lazyboard";
 import { formatDuration, type DailyStats } from "@/shared/stats";
-import { ChevronsDown, Clock, Play } from "lucide-react";
+import { ChevronsDown, Clock, Play, Trophy } from "lucide-react";
 import { useMemo, useState } from "react";
 
 function sum(days: ReadonlyArray<{ stats: DailyStats }>): DailyStats {
@@ -59,6 +60,19 @@ export function StatsPage() {
                         Shorts for the Lazy, this month so far.
                     </p>
                 </div>
+                <a
+                    href={LAZYBOARD_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Global Lazyboard (opens in a new tab)"
+                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-edge bg-card px-3 text-[12.5px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                >
+                    <Trophy
+                        className="size-3.5 text-primary"
+                        strokeWidth={2}
+                    />
+                    <span className="hidden sm:inline">Global Lazyboard</span>
+                </a>
                 <ThemeToggle value={theme} onChange={setTheme} />
             </header>
 
@@ -152,7 +166,9 @@ export function StatsPage() {
 
                     <p className="text-center text-[12px] text-muted-foreground">
                         Only the current month is kept. Earlier months are
-                        cleared automatically, and nothing leaves your browser.
+                        cleared automatically. Nothing leaves your browser
+                        unless you join the Lazyboard. A Short counts once
+                        you've watched half of it.
                     </p>
                 </div>
             )}

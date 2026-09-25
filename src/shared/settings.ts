@@ -10,8 +10,8 @@ export interface Settings {
     /** Seconds to wait after a Short ends, 0 to MAX_DELAY_SECONDS. */
     delaySeconds: number;
     /**
-     * Display name for the future leaderboard; empty when not set. Once set it
-     * is locked for good, and only a reinstall (which clears local storage)
+     * The Lazy Name used on the Lazyboard; empty when not joined. It stays
+     * locked while joined, and leaving (or being removed for inactivity)
      * frees it up again.
      */
     lazyName: string;

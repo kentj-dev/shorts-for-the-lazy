@@ -8,6 +8,7 @@ import {
     SheetTitle,
 } from "@/popup/components/ui/sheet";
 import { cn } from "@/popup/lib/utils";
+import type { PickedAvatar } from "@/shared/avatar";
 import {
     PRIVACY_NOTICE,
     PRIVACY_NOTICE_VERSION,
@@ -17,6 +18,7 @@ import {
     EyeOff,
     FileCheck2,
     Globe2,
+    Hourglass,
     LoaderCircle,
     LogOut,
     MapPin,
@@ -35,6 +37,7 @@ const ICONS: Record<NoticeIcon, LucideIcon> = {
     ip: Network,
     record: FileCheck2,
     leave: LogOut,
+    inactive: Hourglass,
 };
 
 /** Past this many pixels, letting go of a downward swipe closes the sheet. */
@@ -50,6 +53,8 @@ type PrivacySheetProps = {
           name: string;
           busy: boolean;
           onAgree: () => void;
+          /** The picked avatar; the name's default when null. */
+          avatar: PickedAvatar | null;
           /** Off by default: only the name and stats are shared. */
           shareCountry: boolean;
           onShareCountryChange: (share: boolean) => void;
@@ -143,7 +148,7 @@ export function PrivacySheet(props: PrivacySheetProps) {
                     className="shrink-0 cursor-grab touch-none select-none active:cursor-grabbing"
                 >
                     <div className="flex justify-center pt-2.5 pb-1.5">
-                        <span className="h-[5px] w-10 rounded-full bg-muted-foreground/35" />
+                        <span className="h-1.25 w-10 rounded-full bg-muted-foreground/35" />
                     </div>
                     <div className="flex items-center gap-3 px-5 pt-1.5 pb-3">
                         <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-tint-brand text-tint-brand-foreground">
@@ -168,7 +173,7 @@ export function PrivacySheet(props: PrivacySheetProps) {
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-4">
                     {props.mode === "join" ? (
                         <div className="flex items-center gap-3 rounded-2xl border border-edge bg-background px-3.5 py-3">
-                            <LazyAvatar name={props.name} />
+                            <LazyAvatar name={props.name} pick={props.avatar} />
                             <div className="min-w-0 flex-1">
                                 <p className="text-[11.5px] leading-tight text-muted-foreground">
                                     You'll appear as

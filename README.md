@@ -25,7 +25,9 @@ The popup's Settings page also holds the **Lazyboard**, the System / Light / Dar
 
 ## Lazyboard
 
-The [Global Lazyboard](https://lazyboard.hamiken.com) is an opt-in public leaderboard; its server and page live in `../lazyboard`. Nothing is sent until you pick a **Lazy Name** in Settings, press **Join**, and agree to the privacy notice in the sheet that slides up. Names are checked against a word filter in the popup, and again by the server. After joining, the service worker (`src/background/lazyboard.ts`) sends only the activity since the previous sync, roughly once an hour at a minute the server assigned. Failed syncs are retried later under the same event ID, so they are never counted twice. The server computes every total and score itself. **Leave the Lazyboard** deletes your name and stats from the server.
+The [Global Lazyboard](https://lazyboard.hamiken.com) is an opt-in public leaderboard; its server and page live in `../lazyboard`. Nothing is sent until you pick a **Lazy Name** in Settings, press **Join**, and agree to the privacy notice in the sheet that slides up. Names are checked against a word filter in the popup, and again by the server. After joining, the service worker (`src/background/lazyboard.ts`) sends only the activity since the previous sync, roughly once an hour at a minute the server assigned. Failed syncs are retried later under the same event ID, so they are never counted twice. The server computes every total and score itself. **Leave the Lazyboard** deletes your name and stats from the server, and so does 45 days without any activity; the popup warns from day 30 and explains afterwards.
+
+A Short counts as watched once half of its length has actually played (never under 1 second), so swiping past one doesn't count. The same rule feeds the popup's stats and the Lazyboard. The monthly stats page links to the Global Lazyboard.
 
 Build with `LAZYBOARD_URL=http://localhost:8080 npm run build` to point the extension at a local server.
 

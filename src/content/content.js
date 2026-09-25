@@ -38,7 +38,16 @@
     const IDLE_FALLBACK_INTERVAL_MS = 2000;
     const ACTIVE_VIDEO_CHANGE_DEBOUNCE_MS = 80;
     const NAVIGATION_VERIFY_MS = 900;
-    const WATCHED_THRESHOLD_SECONDS = 1;
+    /*
+     * A Short counts as watched once this share of its length has actually
+     * played, so swiping past one doesn't count, and a 60-second Short asks
+     * for more than a 10-second one. Keep in step with the Lazyboard's
+     * anti-cheat (min_seconds_per_short).
+     */
+    const WATCHED_FRACTION = 0.5;
+    const MIN_WATCHED_SECONDS = 1;
+    /** Used only while a Short's length is still unknown. */
+    const UNKNOWN_LENGTH_WATCHED_SECONDS = 10;
     const WATCH_TIME_FLUSH_SECONDS = 5;
     const MAX_PLAYBACK_SAMPLE_SECONDS = 2;
     const RELEVANT_MUTATION_SELECTOR =
@@ -176,6 +185,14 @@
         );
     }
 
+    /** Seconds of playback after which `video` counts as watched. */
+    function watchedThreshold(video) {
+        const duration = video?.duration;
+        if (!Number.isFinite(duration) || duration <= 0)
+            return UNKNOWN_LENGTH_WATCHED_SECONDS;
+        return Math.max(MIN_WATCHED_SECONDS, duration * WATCHED_FRACTION);
+    }
+
     function samplePlaybackTime() {
         const now = performance.now();
         if (playbackWasActive && lastPlaybackSample !== null) {
@@ -192,7 +209,8 @@
 
         if (
             !countedCurrentShort &&
-            currentShortWatchSeconds >= WATCHED_THRESHOLD_SECONDS
+            watchedVideo &&
+            currentShortWatchSeconds >= watchedThreshold(watchedVideo)
         ) {
             countedCurrentShort = true;
             sendStats({ shortsWatched: 1 });

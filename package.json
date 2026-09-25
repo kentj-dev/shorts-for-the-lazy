@@ -1,7 +1,7 @@
 {
     "name": "shorts-for-the-lazy",
     "private": true,
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Sit back and let YouTube Shorts advance automatically when each video ends.",
     "type": "module",
     "scripts": {

@@ -8,7 +8,14 @@
 export const PRIVACY_NOTICE_VERSION = "2026-09-25";
 
 export type NoticeIcon =
-    "send" | "never" | "public" | "country" | "ip" | "record" | "leave";
+    | "send"
+    | "never"
+    | "public"
+    | "country"
+    | "ip"
+    | "record"
+    | "leave"
+    | "inactive";
 
 export interface NoticeSection {
     icon: NoticeIcon;
@@ -21,7 +28,7 @@ export const PRIVACY_NOTICE: NoticeSection[] = [
         icon: "send",
         title: "What we send",
         points: [
-            "Your Lazy Name.",
+            "Your Lazy Name and the avatar (emoji and colour) you pick.",
             "How many Shorts you watched, your watch time, and how many auto-scrolls happened, counted from the moment you join. These are sent as totals about once an hour.",
             "A random installation ID and secret token, so your extension can prove it is you.",
         ],
@@ -38,7 +45,7 @@ export const PRIVACY_NOTICE: NoticeSection[] = [
         icon: "public",
         title: "What is public",
         points: [
-            "Your Lazy Name, counts and points appear on the public Lazyboard for anyone to see. Your country appears too, but only if you choose to show it.",
+            "Your Lazy Name, avatar, counts and points appear on the public Lazyboard for anyone to see. Your country appears too, but only if you choose to show it.",
         ],
     },
     {
@@ -52,7 +59,7 @@ export const PRIVACY_NOTICE: NoticeSection[] = [
         icon: "ip",
         title: "IP address",
         points: [
-            "Like any website, our server sees your IP address when your extension connects. It is used briefly to stop abuse and is never stored.",
+            "We do not store your IP address. Like any website, our server sees it when your extension connects, and uses it only to validate and verify requests and to block abuse. It is never saved to our database or written to our logs. To limit how often requests can be made, we keep a scrambled (hashed) form of it in memory for at most an hour, then it is forgotten. Cloudflare, which carries traffic to our server, handles it only to deliver your requests.",
         ],
     },
     {
@@ -67,6 +74,13 @@ export const PRIVACY_NOTICE: NoticeSection[] = [
         title: "Leaving",
         points: [
             "You can leave anytime in Settings, under Lazyboard. Leaving deletes your name and stats from our server. We keep only the record that you agreed and when you left.",
+        ],
+    },
+    {
+        icon: "inactive",
+        title: "Inactivity",
+        points: [
+            "If your extension doesn't sync with the Lazyboard for 45 days in a row (for example, you stop watching Shorts or remove the extension), we delete your name and stats automatically, just as if you had left. We keep only the record that you agreed and when it was removed. You can join again anytime.",
         ],
     },
 ];

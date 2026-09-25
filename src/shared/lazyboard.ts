@@ -16,6 +16,33 @@ export const LAZYBOARD_API = `${LAZYBOARD_URL}/api/v1`;
 /** chrome.storage.local key. Local on purpose: the token is per install. */
 export const LAZYBOARD_KEY = "lazyboard";
 
+/**
+ * The server deletes installations that haven't synced for this many days
+ * (INACTIVE_AFTER_DAYS on the server; the privacy notice says the same).
+ */
+export const INACTIVE_DAYS = 45;
+/** Past this many quiet days, the popup warns before the spot is removed. */
+export const INACTIVE_WARNING_DAYS = 30;
+
+/**
+ * chrome.storage.local key: set when the server no longer knew this install
+ * (almost always the inactivity clean-up), so the popup can say so.
+ */
+export const REMOVED_KEY = "lazyboardRemoved";
+
+export interface RemovedNotice {
+    /** The Lazy Name it had, offered again when rejoining. */
+    publicName: string;
+    at: string;
+}
+
+export function parseRemovedNotice(value: unknown): RemovedNotice | null {
+    if (typeof value !== "object" || value === null) return null;
+    const raw = value as Record<string, unknown>;
+    if (typeof raw.at !== "string") return null;
+    return { publicName: String(raw.publicName ?? ""), at: raw.at };
+}
+
 export interface Counts {
     shortsWatched: number;
     /** May be fractional while pending; whole seconds are sent. */
@@ -50,6 +77,11 @@ export interface LazyboardState {
     /** Retried as-is (same event_id) until the server answers. */
     inflight: InflightSync | null;
     lastSyncAt: string | null;
+    /**
+     * When the server last heard from this install (sync or settings change).
+     * The inactivity clean-up counts from here.
+     */
+    lastActiveAt: string;
     status: LazyboardStatus;
     privacyNoticeVersion: string;
     agreedAt: string;
@@ -66,6 +98,7 @@ export type LazyboardMessage =
           shareCountry: boolean;
       }
     | { type: "LAZYBOARD_SET_COUNTRY"; shareCountry: boolean }
+    | { type: "LAZYBOARD_SET_AVATAR"; emoji: string; color: string }
     | { type: "LAZYBOARD_LEAVE" };
 
 export type JoinError =
@@ -77,7 +110,9 @@ export type JoinError =
     | "network";
 
 export type LazyboardReply =
-    { ok: true } | { ok: false; error: JoinError | "failed" };
+    | { ok: true }
+    /** "removed": the server no longer knows this install. */
+    | { ok: false; error: JoinError | "failed" | "removed" };
 
 function count(value: unknown): number {
     const n = Number(value);
@@ -125,6 +160,13 @@ export function parseLazyboardState(value: unknown): LazyboardState | null {
                   }
                 : null,
         lastSyncAt: typeof raw.lastSyncAt === "string" ? raw.lastSyncAt : null,
+        // Older state has no lastActiveAt; the last sync or joining will do.
+        lastActiveAt:
+            typeof raw.lastActiveAt === "string"
+                ? raw.lastActiveAt
+                : typeof raw.lastSyncAt === "string"
+                  ? raw.lastSyncAt
+                  : String(raw.agreedAt ?? new Date().toISOString()),
         status:
             status === "suspicious" || status === "blocked" ? status : "active",
         privacyNoticeVersion: String(raw.privacyNoticeVersion ?? ""),

@@ -32,7 +32,10 @@ export function daysInMonth(date = new Date()): Date[] {
     const year = date.getFullYear();
     const month = date.getMonth();
     const count = new Date(year, month + 1, 0).getDate();
-    return Array.from({ length: count }, (_, i) => new Date(year, month, i + 1));
+    return Array.from(
+        { length: count },
+        (_, i) => new Date(year, month, i + 1),
+    );
 }
 
 function count(value: unknown): number {

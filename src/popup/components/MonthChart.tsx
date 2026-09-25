@@ -103,7 +103,9 @@ function ChartTooltip({
                     <span
                         className={cn(
                             "size-2 shrink-0 rounded-full",
-                            line.key === metric ? "bg-primary" : "bg-transparent",
+                            line.key === metric
+                                ? "bg-primary"
+                                : "bg-transparent",
                         )}
                     />
                     <span className="flex-1">{line.label}</span>
@@ -178,7 +180,10 @@ export function MonthChart({ days }: { days: DayStats[] }) {
                             dataKey="day"
                             tickLine={false}
                             axisLine={{ stroke: "var(--edge)" }}
-                            tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                            tick={{
+                                fill: "var(--muted-foreground)",
+                                fontSize: 11,
+                            }}
                             interval="preserveStartEnd"
                             minTickGap={8}
                         />
@@ -186,7 +191,10 @@ export function MonthChart({ days }: { days: DayStats[] }) {
                             tickLine={false}
                             axisLine={false}
                             allowDecimals={false}
-                            tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                            tick={{
+                                fill: "var(--muted-foreground)",
+                                fontSize: 11,
+                            }}
                             tickFormatter={metric.tick}
                             width={48}
                         />

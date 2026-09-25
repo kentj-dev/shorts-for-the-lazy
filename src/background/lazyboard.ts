@@ -13,18 +13,29 @@
  *
  * Each install syncs at its own minute of the hour (plus a little jitter), so
  * installs don't all arrive at :00. Browser shutdown is never relied on.
+ *
+ * The server deletes installs that stay quiet for INACTIVE_DAYS. When it no
+ * longer knows the token (401), the membership is dropped here too and a
+ * REMOVED_KEY note is left so the popup can explain what happened.
  */
 import {
     EMPTY_COUNTS,
     LAZYBOARD_API,
     LAZYBOARD_KEY,
+    REMOVED_KEY,
     parseLazyboardState,
     type Counts,
     type InflightSync,
     type JoinError,
     type LazyboardReply,
     type LazyboardState,
+    type RemovedNotice,
 } from "@/shared/lazyboard";
+import {
+    AVATAR_KEY,
+    parsePickedAvatar,
+    type PickedAvatar,
+} from "@/shared/avatar";
 
 const ALARM = "lazyboard-sync";
 const JITTER_MS = 3 * 60 * 1000;
@@ -50,6 +61,16 @@ async function writeState(state: LazyboardState): Promise<void> {
 async function clearState(): Promise<void> {
     await chrome.storage.local.remove([LAZYBOARD_KEY, "lazyName"]);
     await chrome.alarms.clear(ALARM);
+}
+
+/** Like clearState, but leaves a note for the popup: the server removed us. */
+async function clearRemoved(state: LazyboardState): Promise<void> {
+    await clearState();
+    const notice: RemovedNotice = {
+        publicName: state.publicName,
+        at: new Date().toISOString(),
+    };
+    await chrome.storage.local.set({ [REMOVED_KEY]: notice });
 }
 
 async function api(
@@ -137,6 +158,10 @@ export function createLazyboard(queue: Queue) {
         shareCountry: boolean,
     ): Promise<LazyboardReply> {
         if (await readState()) return { ok: false, error: "already_joined" };
+        const stored = await chrome.storage.local.get(AVATAR_KEY);
+        const avatar: PickedAvatar | null = parsePickedAvatar(
+            stored[AVATAR_KEY],
+        );
 
         let response: Response;
         try {
@@ -146,6 +171,9 @@ export function createLazyboard(queue: Queue) {
                     public_name: name,
                     privacy_notice_version: privacyNoticeVersion,
                     share_country: shareCountry,
+                    // Only if one was picked; the page has name-based defaults.
+                    avatar_emoji: avatar?.emoji,
+                    avatar_color: avatar?.color,
                 }),
             });
         } catch {
@@ -174,6 +202,7 @@ export function createLazyboard(queue: Queue) {
             privacy_notice_version: string;
             share_country: boolean;
         };
+        const now = new Date().toISOString();
         const state: LazyboardState = {
             installationId: body.installation_id,
             token: body.token,
@@ -184,14 +213,16 @@ export function createLazyboard(queue: Queue) {
             pending: { ...EMPTY_COUNTS },
             inflight: null,
             lastSyncAt: null,
+            lastActiveAt: now,
             status: "active",
             privacyNoticeVersion: body.privacy_notice_version,
-            agreedAt: new Date().toISOString(),
+            agreedAt: now,
             shareCountry: body.share_country === true,
         };
         await queue(async () => {
             await writeState(state);
             await chrome.storage.local.set({ lazyName: body.public_name });
+            await chrome.storage.local.remove(REMOVED_KEY);
         });
         await schedule(state);
         return { ok: true };
@@ -211,22 +242,66 @@ export function createLazyboard(queue: Queue) {
         return joining;
     }
 
+    /**
+     * PATCH /me. The server counts it as activity. A 401 means the install
+     * was removed (usually for inactivity), so the membership goes too.
+     */
+    async function patchMe(
+        state: LazyboardState,
+        body: Record<string, unknown>,
+    ): Promise<LazyboardReply> {
+        let response: Response;
+        try {
+            response = await api("/me", {
+                method: "PATCH",
+                token: state.token,
+                body: JSON.stringify(body),
+            });
+        } catch {
+            return { ok: false, error: "network" };
+        }
+        if (response.status === 401) {
+            await queue(() => clearRemoved(state));
+            return { ok: false, error: "removed" };
+        }
+        if (!response.ok) return { ok: false, error: "failed" };
+        await update(state.installationId, (s) => {
+            s.lastActiveAt = new Date().toISOString();
+        });
+        return { ok: true };
+    }
+
+    /**
+     * Saves the picked avatar, and tells the server when already joined. The
+     * local copy only changes once the server accepted it.
+     */
+    async function setAvatar(
+        emoji: string,
+        color: string,
+    ): Promise<LazyboardReply> {
+        const pick = parsePickedAvatar({ emoji, color });
+        if (!pick) return { ok: false, error: "failed" };
+        const state = await readState();
+        if (state) {
+            const reply = await patchMe(state, {
+                avatar_emoji: pick.emoji,
+                avatar_color: pick.color,
+            });
+            // Removed: still keep the pick locally for rejoining.
+            if (!reply.ok && reply.error !== "removed") return reply;
+        }
+        await chrome.storage.local.set({ [AVATAR_KEY]: pick });
+        return { ok: true };
+    }
+
     /** Shows or hides this install's country on the Lazyboard. */
     async function setShareCountry(
         shareCountry: boolean,
     ): Promise<LazyboardReply> {
         const state = await readState();
         if (!state) return { ok: false, error: "failed" };
-        try {
-            const response = await api("/me", {
-                method: "PATCH",
-                token: state.token,
-                body: JSON.stringify({ share_country: shareCountry }),
-            });
-            if (!response.ok) return { ok: false, error: "failed" };
-        } catch {
-            return { ok: false, error: "network" };
-        }
+        const reply = await patchMe(state, { share_country: shareCountry });
+        if (!reply.ok) return reply;
         await update(state.installationId, (s) => {
             s.shareCountry = shareCountry;
         });
@@ -323,6 +398,7 @@ export function createLazyboard(queue: Queue) {
             await update(id, (s) => {
                 if (s.inflight?.eventId === inflight.eventId) s.inflight = null;
                 s.lastSyncAt = new Date().toISOString();
+                s.lastActiveAt = s.lastSyncAt;
             });
             return true;
         }
@@ -330,8 +406,9 @@ export function createLazyboard(queue: Queue) {
         const code = await errorCode(response);
         switch (response.status) {
             case 401:
-                // The server no longer knows this token.
-                await queue(clearState);
+                // The server no longer knows this token: almost always the
+                // inactivity clean-up.
+                await queue(() => clearRemoved(state));
                 return false;
             case 403:
                 await update(id, (s) => {
@@ -421,5 +498,13 @@ export function createLazyboard(queue: Queue) {
         if (alarm.name === ALARM) void sync();
     });
 
-    return { addPending, join, setShareCountry, leave, sync, ensureScheduled };
+    return {
+        addPending,
+        join,
+        setShareCountry,
+        setAvatar,
+        leave,
+        sync,
+        ensureScheduled,
+    };
 }

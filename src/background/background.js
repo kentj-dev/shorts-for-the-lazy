@@ -112,6 +112,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             );
         return true;
     }
+    if (message?.type === "LAZYBOARD_SET_AVATAR" && fromPopup) {
+        lazyboard
+            .setAvatar(String(message.emoji ?? ""), String(message.color ?? ""))
+            .then(sendResponse, () =>
+                sendResponse({ ok: false, error: "failed" }),
+            );
+        return true;
+    }
     if (message?.type === "LAZYBOARD_LEAVE" && fromPopup) {
         lazyboard
             .leave()
