@@ -6,6 +6,7 @@
     "type": "module",
     "scripts": {
         "build": "node scripts/build.mjs",
+        "build:unpacked": "node scripts/build.mjs --unpacked",
         "dev": "node scripts/build.mjs --watch",
         "dev:local": "LAZYBOARD_URL=http://localhost:8080 LAZYBOARD_SYNC_MINUTES=1 node scripts/build.mjs --watch",
         "typecheck": "tsc --noEmit",

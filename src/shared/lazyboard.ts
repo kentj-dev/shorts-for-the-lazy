@@ -82,6 +82,12 @@ export interface LazyboardState {
      * The inactivity clean-up counts from here.
      */
     lastActiveAt: string;
+    /**
+     * Set when a sync couldn't reach the Lazyboard (offline, server down,
+     * Cloudflare error page); cleared by the next sync that gets through.
+     * Activity keeps collecting meanwhile, so nothing is lost.
+     */
+    unreachableSince: string | null;
     status: LazyboardStatus;
     privacyNoticeVersion: string;
     agreedAt: string;
@@ -107,7 +113,12 @@ export type JoinError =
     | "invalid_name"
     | "already_joined"
     | "rate_limited"
+    /** Offline, timed out, or something other than the API answered. */
     | "network";
+
+/** What the popup says whenever the Lazyboard can't be reached. */
+export const UNREACHABLE_MESSAGE =
+    "The Lazyboard can't be reached right now. Try again in a bit.";
 
 export type LazyboardReply =
     | { ok: true }
@@ -167,6 +178,10 @@ export function parseLazyboardState(value: unknown): LazyboardState | null {
                 : typeof raw.lastSyncAt === "string"
                   ? raw.lastSyncAt
                   : String(raw.agreedAt ?? new Date().toISOString()),
+        unreachableSince:
+            typeof raw.unreachableSince === "string"
+                ? raw.unreachableSince
+                : null,
         status:
             status === "suspicious" || status === "blocked" ? status : "active",
         privacyNoticeVersion: String(raw.privacyNoticeVersion ?? ""),

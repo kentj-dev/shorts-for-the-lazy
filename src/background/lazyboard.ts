@@ -90,13 +90,56 @@ async function api(
     });
 }
 
-async function errorCode(response: Response): Promise<string> {
+/**
+ * What a request came back with. Only JSON from the API itself is believed:
+ * when the server is down, Cloudflare (or a captive portal, or a proxy)
+ * answers with its own pages and status codes, and a 401 or 403 from one of
+ * those must never be read as "removed" or "blocked".
+ */
+type ApiResult =
+    | { kind: "ok"; body: Record<string, unknown> }
+    /** The API refused, with one of its own error codes. */
+    | { kind: "error"; status: number; code: string }
+    /** Offline, timed out, server error, or not the API answering. */
+    | { kind: "unreachable" };
+
+async function call(
+    path: string,
+    init: RequestInit & { token?: string } = {},
+): Promise<ApiResult> {
+    let response: Response;
     try {
-        const body = (await response.json()) as { error?: unknown };
-        return typeof body.error === "string" ? body.error : "";
+        response = await api(path, init);
     } catch {
-        return "";
+        return { kind: "unreachable" };
     }
+    // DELETE /me answers 204 with no body.
+    if (response.status === 204) return { kind: "ok", body: {} };
+    let body: Record<string, unknown> | null = null;
+    try {
+        const parsed: unknown = await response.json();
+        if (typeof parsed === "object" && parsed !== null) {
+            body = parsed as Record<string, unknown>;
+        }
+    } catch {
+        body = null;
+    }
+    if (!body) return { kind: "unreachable" };
+    if (response.ok) return { kind: "ok", body };
+    // 5xx means the server is struggling; like being offline, try later.
+    if (response.status < 500 && typeof body.error === "string") {
+        return { kind: "error", status: response.status, code: body.error };
+    }
+    return { kind: "unreachable" };
+}
+
+/** The API's own answer that this install's token is unknown. */
+function isUnknownToken(result: ApiResult): boolean {
+    return (
+        result.kind === "error" &&
+        result.status === 401 &&
+        result.code === "unauthorized"
+    );
 }
 
 function hasCounts(counts: Counts): boolean {
@@ -163,45 +206,39 @@ export function createLazyboard(queue: Queue) {
             stored[AVATAR_KEY],
         );
 
-        let response: Response;
-        try {
-            response = await api("/register", {
-                method: "POST",
-                body: JSON.stringify({
-                    public_name: name,
-                    privacy_notice_version: privacyNoticeVersion,
-                    share_country: shareCountry,
-                    // Only if one was picked; the page has name-based defaults.
-                    avatar_emoji: avatar?.emoji,
-                    avatar_color: avatar?.color,
-                }),
-            });
-        } catch {
-            return { ok: false, error: "network" };
-        }
-        if (!response.ok) {
-            const code = await errorCode(response);
+        const result = await call("/register", {
+            method: "POST",
+            body: JSON.stringify({
+                public_name: name,
+                privacy_notice_version: privacyNoticeVersion,
+                share_country: shareCountry,
+                // Only if one was picked; the page has name-based defaults.
+                avatar_emoji: avatar?.emoji,
+                avatar_color: avatar?.color,
+            }),
+        });
+        if (result.kind === "unreachable") return { ok: false, error: "network" };
+        if (result.kind === "error") {
             const known: JoinError[] = [
                 "name_taken",
                 "name_not_allowed",
                 "invalid_name",
+                "rate_limited",
             ];
-            if (known.includes(code as JoinError)) {
-                return { ok: false, error: code as JoinError };
-            }
-            if (response.status === 429)
-                return { ok: false, error: "rate_limited" };
-            return { ok: false, error: "failed" };
+            return known.includes(result.code as JoinError)
+                ? { ok: false, error: result.code as JoinError }
+                : { ok: false, error: "failed" };
         }
 
-        const body = (await response.json()) as {
-            installation_id: string;
-            token: string;
-            public_name: string;
-            sync_minute: number;
-            privacy_notice_version: string;
-            share_country: boolean;
-        };
+        const body = result.body;
+        if (
+            typeof body.installation_id !== "string" ||
+            typeof body.token !== "string" ||
+            typeof body.public_name !== "string" ||
+            typeof body.sync_minute !== "number"
+        ) {
+            return { ok: false, error: "network" };
+        }
         const now = new Date().toISOString();
         const state: LazyboardState = {
             installationId: body.installation_id,
@@ -214,8 +251,11 @@ export function createLazyboard(queue: Queue) {
             inflight: null,
             lastSyncAt: null,
             lastActiveAt: now,
+            unreachableSince: null,
             status: "active",
-            privacyNoticeVersion: body.privacy_notice_version,
+            privacyNoticeVersion: String(
+                body.privacy_notice_version ?? privacyNoticeVersion,
+            ),
             agreedAt: now,
             shareCountry: body.share_country === true,
         };
@@ -250,23 +290,20 @@ export function createLazyboard(queue: Queue) {
         state: LazyboardState,
         body: Record<string, unknown>,
     ): Promise<LazyboardReply> {
-        let response: Response;
-        try {
-            response = await api("/me", {
-                method: "PATCH",
-                token: state.token,
-                body: JSON.stringify(body),
-            });
-        } catch {
-            return { ok: false, error: "network" };
-        }
-        if (response.status === 401) {
+        const result = await call("/me", {
+            method: "PATCH",
+            token: state.token,
+            body: JSON.stringify(body),
+        });
+        if (result.kind === "unreachable") return { ok: false, error: "network" };
+        if (isUnknownToken(result)) {
             await queue(() => clearRemoved(state));
             return { ok: false, error: "removed" };
         }
-        if (!response.ok) return { ok: false, error: "failed" };
+        if (result.kind === "error") return { ok: false, error: "failed" };
         await update(state.installationId, (s) => {
             s.lastActiveAt = new Date().toISOString();
+            s.unreachableSince = null;
         });
         return { ok: true };
     }
@@ -311,17 +348,15 @@ export function createLazyboard(queue: Queue) {
     async function leave(): Promise<LazyboardReply> {
         const state = await readState();
         if (!state) return { ok: true };
-        try {
-            const response = await api("/me", {
-                method: "DELETE",
-                token: state.token,
-            });
-            // 401: the server already forgot this install.
-            if (!response.ok && response.status !== 401) {
-                return { ok: false, error: "failed" };
-            }
-        } catch {
-            return { ok: false, error: "network" };
+        const result = await call("/me", {
+            method: "DELETE",
+            token: state.token,
+        });
+        // Leaving must reach the server, or the name and stats would stay up.
+        if (result.kind === "unreachable") return { ok: false, error: "network" };
+        // An unknown token means the server already forgot this install.
+        if (result.kind === "error" && !isUnknownToken(result)) {
+            return { ok: false, error: "failed" };
         }
         await queue(clearState);
         return { ok: true };
@@ -377,65 +412,78 @@ export function createLazyboard(queue: Queue) {
         const { state, inflight } = frozen;
         const id = state.installationId;
 
-        let response: Response;
-        try {
-            response = await api("/sync", {
-                method: "POST",
-                token: state.token,
-                body: JSON.stringify({
-                    event_id: inflight.eventId,
-                    sequence: inflight.sequence,
-                    shorts_watched: inflight.shortsWatched,
-                    watch_seconds: inflight.watchSeconds,
-                    auto_scrolls: inflight.autoScrolls,
-                }),
+        const result = await call("/sync", {
+            method: "POST",
+            token: state.token,
+            body: JSON.stringify({
+                event_id: inflight.eventId,
+                sequence: inflight.sequence,
+                shorts_watched: inflight.shortsWatched,
+                watch_seconds: inflight.watchSeconds,
+                auto_scrolls: inflight.autoScrolls,
+            }),
+        });
+
+        // Only a real sync answer clears the inflight delta.
+        if (
+            result.kind === "unreachable" ||
+            (result.kind === "ok" &&
+                typeof result.body.last_sequence !== "number")
+        ) {
+            // Keep everything and retry the same event later; the popup says
+            // the Lazyboard can't be reached for now.
+            await update(id, (s) => {
+                s.unreachableSince ??= new Date().toISOString();
             });
-        } catch {
-            return false; // Offline or timed out: retry the same event later.
+            return false;
         }
 
-        if (response.ok) {
+        if (result.kind === "ok") {
             await update(id, (s) => {
                 if (s.inflight?.eventId === inflight.eventId) s.inflight = null;
                 s.lastSyncAt = new Date().toISOString();
                 s.lastActiveAt = s.lastSyncAt;
+                s.unreachableSince = null;
             });
             return true;
         }
 
-        const code = await errorCode(response);
-        switch (response.status) {
-            case 401:
-                // The server no longer knows this token: almost always the
-                // inactivity clean-up.
-                await queue(() => clearRemoved(state));
-                return false;
-            case 403:
-                await update(id, (s) => {
-                    s.status = "blocked";
-                    s.inflight = null;
-                    s.pending = { ...EMPTY_COUNTS };
-                });
-                await chrome.alarms.clear(ALARM);
-                return false;
-            case 409:
-                if (code === "stale_sequence" || code === "event_id_reused") {
-                    // Out of step with the server (e.g. restored storage). The
-                    // delta never counted, so resend it under a new number.
-                    await resyncSequence(state, inflight);
-                    return true;
-                }
-                return false;
-            case 422:
-                // The server will never take this payload; drop it.
-                await update(id, (s) => {
-                    if (s.inflight?.eventId === inflight.eventId)
-                        s.inflight = null;
-                });
-                return false;
-            default:
-                return false; // 429 or 5xx: retry later.
+        // The API answered, so it's reachable, but it refused.
+        await update(id, (s) => {
+            s.unreachableSince = null;
+        });
+        const { status, code } = result;
+        if (isUnknownToken(result)) {
+            // The server no longer knows this token: almost always the
+            // inactivity clean-up.
+            await queue(() => clearRemoved(state));
+            return false;
         }
+        if (status === 403 && code === "blocked") {
+            await update(id, (s) => {
+                s.status = "blocked";
+                s.inflight = null;
+                s.pending = { ...EMPTY_COUNTS };
+            });
+            await chrome.alarms.clear(ALARM);
+            return false;
+        }
+        if (
+            status === 409 &&
+            (code === "stale_sequence" || code === "event_id_reused")
+        ) {
+            // Out of step with the server (e.g. restored storage). The delta
+            // never counted, so resend it under a new number.
+            await resyncSequence(state, inflight);
+            return true;
+        }
+        if (status === 422) {
+            // The server will never take this payload; drop it.
+            await update(id, (s) => {
+                if (s.inflight?.eventId === inflight.eventId) s.inflight = null;
+            });
+        }
+        return false; // 429 and anything else: retry later.
     }
 
     async function resyncSequence(
@@ -443,10 +491,9 @@ export function createLazyboard(queue: Queue) {
         inflight: InflightSync,
     ) {
         try {
-            const response = await api("/me", { token: state.token });
-            if (!response.ok) return;
-            const me = (await response.json()) as { last_sequence?: unknown };
-            const last = Number(me.last_sequence);
+            const result = await call("/me", { token: state.token });
+            if (result.kind !== "ok") return;
+            const last = Number(result.body.last_sequence);
             if (!Number.isFinite(last)) return;
             await update(state.installationId, (s) => {
                 if (s.inflight?.eventId !== inflight.eventId) return;

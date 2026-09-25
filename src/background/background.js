@@ -73,7 +73,8 @@ async function addDailyStats(delta) {
         if (Number.isFinite(amount) && amount > 0) next[field] += amount;
     }
     await chrome.storage.local.set({ [key]: next });
-    await lazyboard.addPending(delta);
+    // Local stats are saved above; the Lazyboard's bookkeeping can never undo them.
+    await lazyboard.addPending(delta).catch(() => {});
 }
 
 async function setBadgeForTab(tabId, text) {

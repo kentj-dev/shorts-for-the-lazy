@@ -16,8 +16,8 @@
 import { build } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { cp, mkdir, rm } from "node:fs/promises";
-import { watch as watchFiles } from "node:fs";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync, watch as watchFiles } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -103,13 +103,48 @@ const targets = [
     scriptBuild("src/content/content.js", "content.js", "iife", "lazyContent"),
 ];
 
+/**
+ * Unpacked builds (`npm run dev`, `dev:local`, `build:unpacked`) get the
+ * Chrome Web Store listing's public key, so Chrome gives them the store's
+ * extension ID. The API's CORS_ORIGINS then works for them unchanged, with
+ * no per-machine IDs to add. The store package (`npm run build`) never
+ * carries the key: the store supplies the ID itself.
+ *
+ * extension-key.txt holds the listing's *public* key (Developer Dashboard →
+ * the item → Package → "View public key"), base64 without the BEGIN/END
+ * lines. It is not a secret.
+ */
+const unpacked = watch || process.argv.includes("--unpacked");
+const keyFile = path.join(root, "extension-key.txt");
+
+async function manifestJson() {
+    const manifest = JSON.parse(
+        await readFile(path.join(root, "src/manifest.json"), "utf8"),
+    );
+    if (unpacked) {
+        const key = existsSync(keyFile)
+            ? (await readFile(keyFile, "utf8"))
+                  .replace(/-----[^-]+-----/g, "")
+                  .replace(/\s+/g, "")
+            : "";
+        if (key) manifest.key = key;
+        else
+            console.warn(
+                "\n[lazy] extension-key.txt is missing: this unpacked build gets a random ID,\n" +
+                    "       so add chrome-extension://<its id> to the API's CORS_ORIGINS.",
+            );
+    } else if ("key" in manifest) {
+        throw new Error(
+            "src/manifest.json must not contain a key; the store build supplies none",
+        );
+    }
+    return `${JSON.stringify(manifest, null, 4)}\n`;
+}
+
 /** The manifest and the images the content script and toolbar load by URL. */
 async function copyStatic() {
     await mkdir(dist, { recursive: true });
-    await cp(
-        path.join(root, "src/manifest.json"),
-        path.join(dist, "manifest.json"),
-    );
+    await writeFile(path.join(dist, "manifest.json"), await manifestJson());
     await cp(path.join(root, "src/images"), path.join(dist, "images"), {
         recursive: true,
     });

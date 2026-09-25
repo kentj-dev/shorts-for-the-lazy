@@ -16,15 +16,18 @@ import {
     INACTIVE_DAYS,
     INACTIVE_WARNING_DAYS,
     LAZYBOARD_URL,
+    UNREACHABLE_MESSAGE,
     type LazyboardMessage,
     type LazyboardReply,
 } from "@/shared/lazyboard";
 import { PRIVACY_NOTICE_VERSION } from "@/shared/privacyNotice";
 import {
     ChevronRight,
+    CloudOff,
     ExternalLink,
     Hourglass,
     ShieldCheck,
+    Trophy,
     X,
 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -36,17 +39,41 @@ const JOIN_ERRORS: Record<string, string> = {
     name_not_allowed: "Let's keep it friendly. Try another name.",
     invalid_name: "3–20 letters, numbers, spaces, - or _.",
     rate_limited: "Too many tries. Give it a few minutes.",
-    network: "Couldn't reach the Lazyboard. Try again.",
+    network: UNREACHABLE_MESSAGE,
     already_joined: "You're already on the Lazyboard.",
 };
 
+/** Asks the service worker; never rejects, so no caller can crash on it. */
 function send(message: LazyboardMessage): Promise<LazyboardReply> {
-    return chrome.runtime
-        .sendMessage(message)
-        .then(
-            (reply: LazyboardReply | undefined) =>
-                reply ?? { ok: false, error: "failed" },
-        );
+    return chrome.runtime.sendMessage(message).then(
+        (reply: LazyboardReply | undefined) =>
+            reply ?? { ok: false, error: "failed" },
+        (): LazyboardReply => ({ ok: false, error: "failed" }),
+    );
+}
+
+/** Shown while syncs can't reach the Lazyboard. Nothing is lost meanwhile. */
+function UnreachableNotice() {
+    return (
+        <div
+            role="status"
+            className="flex items-start gap-3 bg-secondary px-3 py-2.5 first:rounded-t-[inherit]"
+        >
+            <CloudOff
+                className="mt-px size-4 shrink-0 text-muted-foreground"
+                strokeWidth={2}
+            />
+            <div className="min-w-0 flex-1">
+                <p className="text-[13px] leading-tight font-semibold">
+                    Can't reach the Lazyboard right now
+                </p>
+                <p className="mt-0.5 text-[11.5px] leading-snug text-muted-foreground">
+                    Everything else works as usual. Your activity is saved and
+                    will sync once it's back.
+                </p>
+            </div>
+        </div>
+    );
 }
 
 async function saveAvatar(pick: PickedAvatar): Promise<string | null> {
@@ -57,7 +84,7 @@ async function saveAvatar(pick: PickedAvatar): Promise<string | null> {
     });
     if (reply.ok) return null;
     return reply.error === "network"
-        ? "Couldn't reach the Lazyboard. Try again."
+        ? UNREACHABLE_MESSAGE
         : "Couldn't save your avatar. Try again.";
 }
 
@@ -72,7 +99,7 @@ function RemovedBanner({ onDismiss }: { onDismiss: () => void }) {
     return (
         <div
             role="status"
-            className="flex items-start gap-3 bg-tint-brand px-3 py-2.5 text-tint-brand-foreground"
+            className="flex items-start gap-3 bg-tint-brand px-3 py-2.5 text-tint-brand-foreground first:rounded-t-[inherit]"
         >
             <Hourglass className="mt-px size-4 shrink-0" strokeWidth={2} />
             <div className="min-w-0 flex-1">
@@ -218,7 +245,7 @@ export function LazyboardSection({ savedName }: LazyboardSectionProps) {
         if (!reply.ok && reply.error !== "removed") {
             setCountryError(
                 reply.error === "network"
-                    ? "Couldn't reach the Lazyboard. Try again."
+                    ? UNREACHABLE_MESSAGE
                     : "Couldn't change that right now. Try again.",
             );
         }
@@ -239,7 +266,7 @@ export function LazyboardSection({ savedName }: LazyboardSectionProps) {
         if (!reply.ok) {
             setLeaveError(
                 reply.error === "network"
-                    ? "Couldn't reach the Lazyboard. Try again."
+                    ? UNREACHABLE_MESSAGE
                     : "Couldn't leave right now. Try again.",
             );
         }
@@ -269,6 +296,9 @@ export function LazyboardSection({ savedName }: LazyboardSectionProps) {
         >
             {!joined && removed ? (
                 <RemovedBanner onDismiss={dismissRemovedNotice} />
+            ) : null}
+            {membership?.unreachableSince && !blocked ? (
+                <UnreachableNotice />
             ) : null}
             <LazyNameField
                 value={membership?.publicName ?? ""}
@@ -363,13 +393,16 @@ export function LazyboardSection({ savedName }: LazyboardSectionProps) {
                 href={LAZYBOARD_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                className="group flex items-center gap-3 bg-tint-brand px-3 last:rounded-b-[inherit] py-2.5 text-tint-brand-foreground transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
             >
-                <span className="min-w-0 flex-1 text-[13.5px] leading-tight">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors group-hover:bg-primary-foreground/20">
+                    <Trophy className="size-4" strokeWidth={2.2} />
+                </span>
+                <span className="min-w-0 flex-1 text-[13.5px] leading-tight font-semibold">
                     See the Lazyboard
                 </span>
                 <ExternalLink
-                    className="size-4 shrink-0 text-muted-foreground"
+                    className="size-4 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
                     strokeWidth={2}
                 />
             </a>
