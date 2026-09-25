@@ -59,7 +59,11 @@ const popupBuild = () => ({
         sourcemap: watch ? "inline" : false,
         watch: watch ? {} : null,
         rollupOptions: {
-            input: path.join(root, "src/popup/index.html"),
+            input: {
+                popup: path.join(root, "src/popup/index.html"),
+                // The monthly stats page, opened in its own tab.
+                stats: path.join(root, "src/popup/stats.html"),
+            },
         },
     },
 });

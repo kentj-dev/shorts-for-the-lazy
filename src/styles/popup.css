@@ -48,6 +48,7 @@
     --tint-brand-foreground: #c8102e;
     --success: #16a34a;
     --warning: #d97706;
+    --dot: #d6d7dd;
 }
 
 .dark {
@@ -77,6 +78,7 @@
     --tint-brand-foreground: #ff8fa6;
     --success: #39c65a;
     --warning: #ff9f0a;
+    --dot: #2c2d33;
 }
 
 @theme inline {
@@ -195,4 +197,16 @@ html body {
     font-size: 14px;
     font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * The monthly stats page opens in a full tab, so it drops the popup width and
+ * sits on a dot grid. The dots stay put while the page scrolls.
+ */
+html[data-page="stats"] body {
+    width: auto;
+    min-height: 100vh;
+    background-image: radial-gradient(var(--dot) 1px, transparent 1.5px);
+    background-size: 22px 22px;
+    background-attachment: fixed;
 }

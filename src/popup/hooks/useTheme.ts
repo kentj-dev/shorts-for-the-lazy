@@ -4,6 +4,7 @@ import {
     readThemePreference,
     saveThemePreference,
     watchSystemTheme,
+    watchThemePreference,
     type ThemePreference,
 } from "@/popup/lib/theme";
 
@@ -19,6 +20,9 @@ export function useTheme(): [ThemePreference, (next: ThemePreference) => void] {
         if (theme !== "system") return undefined;
         return watchSystemTheme(() => applyTheme("system"));
     }, [theme]);
+
+    // Follow a choice made in another open extension page.
+    useEffect(() => watchThemePreference(setTheme), []);
 
     const choose = useCallback((next: ThemePreference) => {
         saveThemePreference(next);

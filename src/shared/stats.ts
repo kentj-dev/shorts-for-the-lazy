@@ -11,12 +11,28 @@ export const EMPTY_STATS: DailyStats = {
     autoScrolled: 0,
 };
 
-/** Same key format as background.js: dailyStats:YYYY-MM-DD in local time. */
+/**
+ * Same key format as background.js: dailyStats:YYYY-MM-DD in local time.
+ * background.js keeps only the current month's keys.
+ */
 export function todayStatsKey(date = new Date()): string {
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${monthStatsPrefix(date)}-${day}`;
+}
+
+/** dailyStats:YYYY-MM, the prefix every key in that month shares. */
+export function monthStatsPrefix(date = new Date()): string {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `dailyStats:${year}-${month}-${day}`;
+    return `dailyStats:${year}-${month}`;
+}
+
+/** Every day of the month `date` falls in, at local midnight. */
+export function daysInMonth(date = new Date()): Date[] {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const count = new Date(year, month + 1, 0).getDate();
+    return Array.from({ length: count }, (_, i) => new Date(year, month, i + 1));
 }
 
 function count(value: unknown): number {

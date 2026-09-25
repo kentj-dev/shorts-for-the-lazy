@@ -4,11 +4,18 @@ const DAILY_STATS_PREFIX = "dailyStats:";
 const INSTALL_PAGE_URL =
     "https://apps.hamiken.com/apps/shorts-for-the-lazy/thank-you";
 let statsUpdateQueue = Promise.resolve();
+/** The month pruneOldStats last cleaned up to, so it runs once per month. */
+let prunedMonthPrefix = "";
 
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === "install") {
         void chrome.tabs.create({ url: INSTALL_PAGE_URL });
     }
+    queueStatsUpdate(pruneOldStats).catch(() => {});
+});
+
+chrome.runtime.onStartup.addListener(() => {
+    queueStatsUpdate(pruneOldStats).catch(() => {});
 });
 
 function getLocalDateKey(date = new Date()) {
@@ -18,7 +25,33 @@ function getLocalDateKey(date = new Date()) {
     return `${DAILY_STATS_PREFIX}${year}-${month}-${day}`;
 }
 
+/** "dailyStats:YYYY-MM" for the month `key` belongs to. */
+function monthPrefixOf(key) {
+    return key.slice(0, DAILY_STATS_PREFIX.length + "YYYY-MM".length);
+}
+
+/** Only the current month is kept; earlier daily counters are dropped. */
+async function pruneOldStats() {
+    const monthPrefix = monthPrefixOf(getLocalDateKey());
+    if (monthPrefix === prunedMonthPrefix) return;
+    const stored = await chrome.storage.local.get(null);
+    const stale = Object.keys(stored).filter(
+        (key) =>
+            key.startsWith(DAILY_STATS_PREFIX) && !key.startsWith(monthPrefix),
+    );
+    if (stale.length > 0) await chrome.storage.local.remove(stale);
+    prunedMonthPrefix = monthPrefix;
+}
+
+/** Stats writes run one at a time so read-modify-write never interleaves. */
+function queueStatsUpdate(task) {
+    const update = statsUpdateQueue.then(task);
+    statsUpdateQueue = update.catch(() => {});
+    return update;
+}
+
 async function addDailyStats(delta) {
+    await pruneOldStats();
     const key = getLocalDateKey();
     const stored = await chrome.storage.local.get(key);
     const current = stored[key] || {};
@@ -55,11 +88,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message?.type === "ADD_DAILY_STATS" && sender.tab?.id) {
-        const update = statsUpdateQueue.then(() =>
-            addDailyStats(message.delta),
-        );
-        statsUpdateQueue = update.catch(() => {});
-        update.then(
+        queueStatsUpdate(() => addDailyStats(message.delta)).then(
             () => sendResponse({ ok: true }),
             () => sendResponse({ ok: false }),
         );

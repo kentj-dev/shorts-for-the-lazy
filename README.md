@@ -40,7 +40,7 @@ src/manifest.json              Extension metadata, permissions, popup, and conte
 src/content/content.js         Active-video detection, end detection, SPA monitoring, navigation, in-page shortcut
 src/background/background.js   Toolbar countdown badge, daily stats, and the auto-scroll toggle
 src/images/                    Files loaded by URL: toolbar icon and the on-page control's icons
-src/popup/                     The popup: React + Tailwind + shadcn/ui components
+src/popup/                     The popup and the monthly stats tab (stats.html): React + Tailwind + shadcn/ui + Recharts
 src/shared/                    Settings, shortcut, and stats helpers used by the popup
 src/styles/popup.css           Theme tokens (light and dark) and base styles
 scripts/build.mjs              Vite build for the popup, content script, and service worker

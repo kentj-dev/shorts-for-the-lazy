@@ -55,3 +55,17 @@ export function watchSystemTheme(onChange: () => void): () => void {
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
 }
+
+/**
+ * Calls `onChange` when another extension page (the popup or the stats tab)
+ * saves a new appearance choice.
+ */
+export function watchThemePreference(
+    onChange: (next: ThemePreference) => void,
+): () => void {
+    const onStorage = (event: StorageEvent): void => {
+        if (event.key === THEME_KEY) onChange(readThemePreference());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+}
