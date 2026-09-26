@@ -126,7 +126,7 @@ export function PagesApp() {
             */}
                 <nav
                     aria-label="Pages"
-                    className="mt-6 mb-7 flex gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-border)] [scrollbar-width:none]"
+                    className="mt-6 mb-7 flex gap-1 overflow-x-auto overflow-y-hidden scrollbar-none"
                 >
                     {PAGES.map(({ id, label, icon: Icon }) => {
                         const selected = id === page;
@@ -136,7 +136,7 @@ export function PagesApp() {
                                 href={`#${id}`}
                                 aria-current={selected ? "page" : undefined}
                                 className={cn(
-                                    "flex shrink-0 bg-card items-center rounded-t-lg gap-1.5 border-b-2 px-3 py-2 text-[13.5px] font-medium transition-colors focus-visible:rounded-t-md focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                                    "flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-[13.5px] font-medium transition-colors focus-visible:rounded-t-md focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
                                     selected
                                         ? "border-primary text-foreground"
                                         : "border-tint-brand text-muted-foreground hover:text-foreground",
