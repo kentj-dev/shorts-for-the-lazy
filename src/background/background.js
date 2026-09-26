@@ -56,6 +56,8 @@ function queueStatsUpdate(task) {
 
 /** Opt-in leaderboard sync. Sends nothing until the person has joined. */
 const lazyboard = createLazyboard(queueStatsUpdate);
+// The worker may have slept through coming back online.
+lazyboard.retryUnreachable().catch(() => {});
 
 async function addDailyStats(delta) {
     await pruneOldStats();
@@ -116,6 +118,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type === "LAZYBOARD_SET_AVATAR" && fromPopup) {
         lazyboard
             .setAvatar(String(message.emoji ?? ""), String(message.color ?? ""))
+            .then(sendResponse, () =>
+                sendResponse({ ok: false, error: "failed" }),
+            );
+        return true;
+    }
+    if (message?.type === "LAZYBOARD_SYNC_NOW" && fromPopup) {
+        lazyboard
+            .syncNow()
             .then(sendResponse, () =>
                 sendResponse({ ok: false, error: "failed" }),
             );

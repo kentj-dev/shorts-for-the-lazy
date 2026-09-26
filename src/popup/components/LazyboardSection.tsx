@@ -17,8 +17,11 @@ import {
     INACTIVE_WARNING_DAYS,
     LAZYBOARD_URL,
     UNREACHABLE_MESSAGE,
+    hasCounts,
+    manualSyncReadyAt,
     type LazyboardMessage,
     type LazyboardReply,
+    type LazyboardState,
 } from "@/shared/lazyboard";
 import { PRIVACY_NOTICE_VERSION } from "@/shared/privacyNotice";
 import {
@@ -26,11 +29,12 @@ import {
     CloudOff,
     ExternalLink,
     Hourglass,
+    RefreshCw,
     ShieldCheck,
     Trophy,
     X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -151,6 +155,93 @@ function AvatarRow({
                 onClick={onChange}
             >
                 Change
+            </Button>
+        </div>
+    );
+}
+
+/** Re-renders every `ms` so countdowns stay current while the popup is open. */
+function useNow(ms: number): number {
+    const [now, setNow] = useState(Date.now);
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), ms);
+        return () => clearInterval(id);
+    }, [ms]);
+    return now;
+}
+
+const SYNC_ERRORS: Record<string, string> = {
+    network: UNREACHABLE_MESSAGE,
+    cooldown: "Synced recently. Try again in a few minutes.",
+    removed: "",
+};
+
+/** "Sync now", allowed once per cooldown and only with something to send. */
+function SyncNowRow({ membership }: { membership: LazyboardState }) {
+    const now = useNow(15_000);
+    const [syncing, setSyncing] = useState(false);
+    const [result, setResult] = useState<{ text: string; error: boolean }>();
+
+    const readyAt = manualSyncReadyAt(membership.lastSyncAt, now);
+    const waiting =
+        membership.inflight !== null || hasCounts(membership.pending);
+    const minutesLeft = readyAt ? Math.ceil((readyAt - now) / 60_000) : 0;
+
+    const syncNow = async () => {
+        setSyncing(true);
+        setResult(undefined);
+        const reply = await send({ type: "LAZYBOARD_SYNC_NOW" });
+        setSyncing(false);
+        setResult(
+            reply.ok
+                ? {
+                      text: "Synced. The board updates within a minute.",
+                      error: false,
+                  }
+                : {
+                      text:
+                          SYNC_ERRORS[reply.error] ??
+                          "Couldn't sync right now. Try again later.",
+                      error: true,
+                  },
+        );
+    };
+
+    const hint =
+        result?.text ||
+        (!waiting
+            ? "Up to date. Nothing new to send."
+            : readyAt
+              ? `Available in ${minutesLeft}m. Your activity is saved.`
+              : "Send your latest activity now.");
+
+    return (
+        <div className="flex items-center gap-3 px-3 py-2.5">
+            <div className="min-w-0 flex-1">
+                <p className="text-[13.5px] leading-tight">Sync now</p>
+                <p
+                    aria-live="polite"
+                    className={
+                        result?.error
+                            ? "mt-0.5 text-[11.5px] leading-snug text-destructive"
+                            : "mt-0.5 text-[11.5px] leading-snug text-muted-foreground"
+                    }
+                >
+                    {hint}
+                </p>
+            </div>
+            <Button
+                variant="outline"
+                size="sm"
+                className="border-edge"
+                disabled={syncing || !waiting || readyAt !== null}
+                onClick={() => void syncNow()}
+            >
+                <RefreshCw
+                    className={syncing ? "animate-spin" : undefined}
+                    strokeWidth={2}
+                />
+                Sync
             </Button>
         </div>
     );
@@ -326,6 +417,7 @@ export function LazyboardSection({ savedName }: LazyboardSectionProps) {
 
             {membership ? (
                 <>
+                    {blocked ? null : <SyncNowRow membership={membership} />}
                     <SettingRow
                         label="Show my country"
                         hint={

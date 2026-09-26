@@ -25,6 +25,13 @@ export const INACTIVE_DAYS = 45;
 export const INACTIVE_WARNING_DAYS = 30;
 
 /**
+ * "Sync now" waits this long after the last sync that got through, whatever
+ * started it. The server allows 8 syncs an hour, so this plus the hourly
+ * sync always fits.
+ */
+export const MANUAL_SYNC_COOLDOWN_MS = 15 * 60 * 1000;
+
+/**
  * chrome.storage.local key: set when the server no longer knew this install
  * (almost always the inactivity clean-up), so the popup can say so.
  */
@@ -105,6 +112,7 @@ export type LazyboardMessage =
       }
     | { type: "LAZYBOARD_SET_COUNTRY"; shareCountry: boolean }
     | { type: "LAZYBOARD_SET_AVATAR"; emoji: string; color: string }
+    | { type: "LAZYBOARD_SYNC_NOW" }
     | { type: "LAZYBOARD_LEAVE" };
 
 export type JoinError =
@@ -122,8 +130,31 @@ export const UNREACHABLE_MESSAGE =
 
 export type LazyboardReply =
     | { ok: true }
-    /** "removed": the server no longer knows this install. */
-    | { ok: false; error: JoinError | "failed" | "removed" };
+    /**
+     * "removed": the server no longer knows this install. "cooldown": a
+     * manual sync came too soon after the last one.
+     */
+    | { ok: false; error: JoinError | "failed" | "removed" | "cooldown" };
+
+/** Whether there's anything worth sending. */
+export function hasCounts(counts: Counts): boolean {
+    return (
+        counts.shortsWatched > 0 ||
+        counts.watchSeconds >= 1 ||
+        counts.autoScrolls > 0
+    );
+}
+
+/** When "Sync now" is next allowed, or null if it already is. */
+export function manualSyncReadyAt(
+    lastSyncAt: string | null,
+    now = Date.now(),
+): number | null {
+    const last = lastSyncAt ? Date.parse(lastSyncAt) : Number.NaN;
+    if (Number.isNaN(last)) return null;
+    const ready = last + MANUAL_SYNC_COOLDOWN_MS;
+    return ready > now ? ready : null;
+}
 
 function count(value: unknown): number {
     const n = Number(value);

@@ -13,6 +13,9 @@
  *
  * Each install syncs at its own minute of the hour (plus a little jitter), so
  * installs don't all arrive at :00. Browser shutdown is never relied on.
+ * On top of that, the popup's "Sync now" sends right away (at most once per
+ * MANUAL_SYNC_COOLDOWN_MS), and a sync that couldn't get through is retried
+ * as soon as the browser is back online instead of waiting for the hour.
  *
  * The server deletes installs that stay quiet for INACTIVE_DAYS. When it no
  * longer knows the token (401), the membership is dropped here too and a
@@ -23,8 +26,9 @@ import {
     LAZYBOARD_API,
     LAZYBOARD_KEY,
     REMOVED_KEY,
+    hasCounts,
+    manualSyncReadyAt,
     parseLazyboardState,
-    type Counts,
     type InflightSync,
     type JoinError,
     type LazyboardReply,
@@ -44,6 +48,12 @@ const JITTER_MS = 3 * 60 * 1000;
 declare const __LAZYBOARD_SYNC_MINUTES__: number;
 const SYNC_MINUTES: number = __LAZYBOARD_SYNC_MINUTES__;
 const REQUEST_TIMEOUT_MS = 15_000;
+/**
+ * Retries after being unreachable happen at most this often. Kept in session
+ * storage because the worker itself restarts often.
+ */
+const RETRY_KEY = "lazyboardRetryAt";
+const RETRY_GAP_MS = 5 * 60 * 1000;
 
 /** Runs a storage read-modify-write after every earlier one finished. */
 type Queue = <T>(task: () => Promise<T>) => Promise<T>;
@@ -142,14 +152,6 @@ function isUnknownToken(result: ApiResult): boolean {
     );
 }
 
-function hasCounts(counts: Counts): boolean {
-    return (
-        counts.shortsWatched > 0 ||
-        counts.watchSeconds >= 1 ||
-        counts.autoScrolls > 0
-    );
-}
-
 /**
  * The next time this install's minute comes round, plus some jitter. Local
  * builds with a shorter interval just sync that often from now.
@@ -217,7 +219,8 @@ export function createLazyboard(queue: Queue) {
                 avatar_color: avatar?.color,
             }),
         });
-        if (result.kind === "unreachable") return { ok: false, error: "network" };
+        if (result.kind === "unreachable")
+            return { ok: false, error: "network" };
         if (result.kind === "error") {
             const known: JoinError[] = [
                 "name_taken",
@@ -295,7 +298,8 @@ export function createLazyboard(queue: Queue) {
             token: state.token,
             body: JSON.stringify(body),
         });
-        if (result.kind === "unreachable") return { ok: false, error: "network" };
+        if (result.kind === "unreachable")
+            return { ok: false, error: "network" };
         if (isUnknownToken(result)) {
             await queue(() => clearRemoved(state));
             return { ok: false, error: "removed" };
@@ -353,7 +357,8 @@ export function createLazyboard(queue: Queue) {
             token: state.token,
         });
         // Leaving must reach the server, or the name and stats would stay up.
-        if (result.kind === "unreachable") return { ok: false, error: "network" };
+        if (result.kind === "unreachable")
+            return { ok: false, error: "network" };
         // An unknown token means the server already forgot this install.
         if (result.kind === "error" && !isUnknownToken(result)) {
             return { ok: false, error: "failed" };
@@ -405,7 +410,12 @@ export function createLazyboard(queue: Queue) {
         });
     }
 
-    /** One round: send the inflight sync. True if it's worth another round. */
+    /**
+     * One round: send the inflight sync. True only when it was renumbered
+     * after a 409 and should be sent again now. After a success, whatever
+     * collected meanwhile waits for the next sync: the server refuses another
+     * one within MIN_SYNC_GAP_SECS anyway.
+     */
     async function sendOnce(): Promise<boolean> {
         const frozen = await freeze();
         if (!frozen) return false;
@@ -445,7 +455,7 @@ export function createLazyboard(queue: Queue) {
                 s.lastActiveAt = s.lastSyncAt;
                 s.unreachableSince = null;
             });
-            return true;
+            return false;
         }
 
         // The API answered, so it's reachable, but it refused.
@@ -483,7 +493,9 @@ export function createLazyboard(queue: Queue) {
                 if (s.inflight?.eventId === inflight.eventId) s.inflight = null;
             });
         }
-        return false; // 429 and anything else: retry later.
+        // 429 (rate_limited or sync_too_soon) and anything else: the same
+        // inflight sync is retried later.
+        return false;
     }
 
     async function resyncSequence(
@@ -509,7 +521,7 @@ export function createLazyboard(queue: Queue) {
         }
     }
 
-    /** Sends what's waiting. A retried sync may be followed by fresh pending. */
+    /** Sends what's waiting, once more if it had to be renumbered. */
     function sync(): Promise<void> {
         syncing ??= (async () => {
             try {
@@ -541,8 +553,50 @@ export function createLazyboard(queue: Queue) {
         }
     }
 
+    /**
+     * The popup's "Sync now". Waits out the cooldown since the last sync that
+     * got through, then reports how this one went.
+     */
+    async function syncNow(): Promise<LazyboardReply> {
+        const before = await readState();
+        if (!before || before.status === "blocked") {
+            return { ok: false, error: "failed" };
+        }
+        if (manualSyncReadyAt(before.lastSyncAt) !== null) {
+            return { ok: false, error: "cooldown" };
+        }
+        if (!before.inflight && !hasCounts(before.pending)) return { ok: true };
+
+        await sync();
+        const after = await readState();
+        if (!after || after.installationId !== before.installationId) {
+            return { ok: false, error: "removed" };
+        }
+        if (after.lastSyncAt !== before.lastSyncAt) return { ok: true };
+        if (after.unreachableSince) return { ok: false, error: "network" };
+        return { ok: false, error: "failed" };
+    }
+
+    /**
+     * After failing to reach the Lazyboard, tries again as soon as it might
+     * work (back online, or the worker waking up) rather than on the hour.
+     */
+    async function retryUnreachable(): Promise<void> {
+        if (!navigator.onLine) return;
+        const state = await readState();
+        if (!state?.unreachableSince || state.status === "blocked") return;
+        const stored = await chrome.storage.session.get(RETRY_KEY);
+        const last = Number(stored[RETRY_KEY]) || 0;
+        if (Date.now() - last < RETRY_GAP_MS) return;
+        await chrome.storage.session.set({ [RETRY_KEY]: Date.now() });
+        await sync();
+    }
+
     chrome.alarms.onAlarm.addListener((alarm) => {
         if (alarm.name === ALARM) void sync();
+    });
+    self.addEventListener("online", () => {
+        retryUnreachable().catch(() => {});
     });
 
     return {
@@ -552,6 +606,8 @@ export function createLazyboard(queue: Queue) {
         setAvatar,
         leave,
         sync,
+        syncNow,
+        retryUnreachable,
         ensureScheduled,
     };
 }
