@@ -1,10 +1,12 @@
 # Privacy Policy for Shorts for the Lazy
 
-Shorts for the Lazy does not sell or share personal information, and it never collects browsing history, video history, or analytics.
+Shorts for the Lazy does not sell or share personal information, never sends browsing or viewing history anywhere, and collects no analytics.
 
 The extension reads the YouTube page only to identify the active Short, monitor its playback position, and add the user-facing auto-scroll control. This processing happens locally in the browser.
 
-The extension stores the user's auto-scroll, countdown-badge, shortcut, and delay preferences using Chrome's synchronized extension storage. Daily counters (Shorts watched, watch time, and auto-scrolls) are kept in Chrome's local extension storage for the current month only; earlier months are deleted automatically. The popup's light or dark appearance choice is kept in the popup's local storage.
+The extension stores the user's preferences (auto-scroll, countdown badge, shortcut, delay, playback speed, plays per Short, skip lengths, session limits, pausing in background tabs, and whether to save history) using Chrome's synchronized extension storage. Daily counters (Shorts watched, watch time, and auto-scrolls) are kept in Chrome's local extension storage for the current month only; earlier months are deleted automatically. The popup's light or dark appearance choice is kept in the popup's local storage.
+
+Unless the user turns off **Save history** on the History page, the extension keeps a list of up to 200 recently watched Shorts (video ID, title, channel name, length, and when it was watched) in Chrome's local extension storage. It is never synced or sent anywhere. The user can remove single entries or clear the list on the History page, and uninstalling the extension deletes it. When the History page is open, the browser loads each Short's thumbnail image from YouTube's image server (i.ytimg.com), the same server YouTube itself uses.
 
 ## Lazyboard (optional)
 

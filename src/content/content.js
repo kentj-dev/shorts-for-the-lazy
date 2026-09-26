@@ -1,37 +1,14 @@
+import { isVideoId } from "@/shared/history";
+import { parseSettings, skipRange, SYNC_SETTING_KEYS } from "@/shared/settings";
+
 (() => {
     "use strict";
 
     /*
-     * The in-page shortcut that toggles auto-scroll, set from the popup. Stored
-     * under `shortcut` in sync storage: missing means this default, null means
-     * turned off. Keep in step with src/shared/shortcut.ts.
+     * Timings below are in real (wall-clock) seconds. At a playback speed
+     * other than 1x, a Short's remaining time and length are divided by its
+     * rate, so a 30-second Short at 2x counts down from 15.
      */
-    const IS_MAC = /mac|iphone|ipad/i.test(
-        navigator.userAgentData?.platform || navigator.platform || "",
-    );
-    const DEFAULT_SHORTCUT = Object.freeze(
-        IS_MAC
-            ? {
-                  code: "KeyS",
-                  ctrlKey: false,
-                  altKey: false,
-                  shiftKey: true,
-                  metaKey: true,
-              }
-            : {
-                  code: "KeyS",
-                  ctrlKey: false,
-                  altKey: true,
-                  shiftKey: true,
-                  metaKey: false,
-              },
-    );
-    const DEFAULT_SETTINGS = Object.freeze({
-        enabled: true,
-        badgeEnabled: true,
-        delaySeconds: 0,
-        shortcut: DEFAULT_SHORTCUT,
-    });
     const END_THRESHOLD_SECONDS = 0.16;
     const END_MONITOR_WINDOW_SECONDS = 1;
     const FALLBACK_INTERVAL_MS = 500;
@@ -50,10 +27,31 @@
     const UNKNOWN_LENGTH_WATCHED_SECONDS = 10;
     const WATCH_TIME_FLUSH_SECONDS = 5;
     const MAX_PLAYBACK_SAMPLE_SECONDS = 2;
+    /**
+     * YouTube sets its own rate while a Short loads, so the chosen speed is
+     * re-applied for this long. After that it is left alone, and a speed
+     * picked in YouTube's own menu stands for the rest of that Short.
+     */
+    const SPEED_SETTLE_SECONDS = 1;
     const RELEVANT_MUTATION_SELECTOR =
         "video, ytd-shorts, ytd-reel-video-renderer, .navigation-container, #navigation-button-down";
+    /* YouTube renames these often; the first that matches wins. */
+    const TITLE_SELECTORS = [
+        "yt-shorts-video-title-view-model h2",
+        ".ytShortsVideoTitleViewModelShortsVideoTitle",
+        "ytd-reel-player-header-renderer h2",
+        "#video-title",
+    ];
+    const CHANNEL_SELECTORS = [
+        "yt-reel-channel-bar-view-model a",
+        ".ytReelChannelBarViewModelChannelName a",
+        "ytd-channel-name a",
+        "#channel-name a",
+    ];
 
-    let settings = { ...DEFAULT_SETTINGS };
+    let settings = parseSettings({});
+    /** Raw sync values, so one changed key can be re-parsed with the rest. */
+    let storedSettings = {};
     let watchedVideo = null;
     let watchedShortKey = "";
     let hasTriggeredForCurrentShort = false;
@@ -72,9 +70,45 @@
     let pendingWatchSeconds = 0;
     let lastPlaybackSample = null;
     let playbackWasActive = false;
+    /** Times the current Short has reached its end, for the loop count. */
+    let completedPlays = 0;
+    /** Set at the end of a play, cleared once the Short loops back. */
+    let endReachedThisPass = false;
+    /** False while a reused video element still reports the last Short's length. */
+    let metadataFresh = false;
+    let skipCheckedForCurrentShort = false;
+    /** Shorts skipped for their length; scrolling back to one plays it. */
+    const skippedShortKeys = new Set();
+    /** Elements given a non-default speed, so going back to 1x can undo it. */
+    const speedChangedVideos = new WeakSet();
+    /** The Short paused because its tab was hidden, to resume on return. */
+    let pausedWhileHidden = null;
+    let pausedWhileHiddenKey = "";
+    /*
+     * A session runs from page load, or from auto-scroll being turned back
+     * on, until a session limit ends it.
+     */
+    let sessionShorts = 0;
+    let sessionWatchSeconds = 0;
+    let sessionLimitReached = false;
 
     function isShortsPage() {
         return location.pathname.startsWith("/shorts/");
+    }
+
+    function playbackRateOf(video) {
+        const rate = video?.playbackRate;
+        return Number.isFinite(rate) && rate > 0 ? rate : 1;
+    }
+
+    /** Real seconds left at the current speed. */
+    function remainingSeconds(video) {
+        return (video.duration - video.currentTime) / playbackRateOf(video);
+    }
+
+    /** Real seconds one play takes at the current speed. */
+    function effectiveLength(video) {
+        return video.duration / playbackRateOf(video);
     }
 
     function updateBadge(video = watchedVideo) {
@@ -86,11 +120,8 @@
             video &&
             Number.isFinite(video.duration)
         ) {
-            const remainingSeconds = Math.max(
-                0,
-                Math.ceil(video.duration - video.currentTime),
-            );
-            text = remainingSeconds > 999 ? "999+" : String(remainingSeconds);
+            const remaining = Math.max(0, Math.ceil(remainingSeconds(video)));
+            text = remaining > 999 ? "999+" : String(remaining);
         }
         updateInjectedCountdown(video);
         if (text === lastBadgeText || !extensionContextValid) return;
@@ -122,7 +153,7 @@
             Number.isFinite(video.duration) &&
             video.duration > 0;
         statusCountdown.textContent = shouldShow
-            ? String(Math.max(0, Math.ceil(video.duration - video.currentTime)))
+            ? String(Math.max(0, Math.ceil(remainingSeconds(video))))
             : "";
     }
 
@@ -151,19 +182,63 @@
         updateBadge(watchedVideo);
     }
 
-    function sendStats(delta) {
+    function sendToWorker(message) {
         if (!extensionContextValid) return;
         try {
-            const result = chrome.runtime.sendMessage({
-                type: "ADD_DAILY_STATS",
-                delta,
-            });
+            const result = chrome.runtime.sendMessage(message);
             result?.catch?.(() => {
                 if (!chrome.runtime?.id) deactivateStaleInstance();
             });
         } catch {
             deactivateStaleInstance();
         }
+    }
+
+    function sendStats(delta) {
+        sendToWorker({ type: "ADD_DAILY_STATS", delta });
+    }
+
+    function shortIdOf(key) {
+        const id = /\/shorts\/([^/?#]+)/.exec(key)?.[1];
+        return isVideoId(id) ? id : "";
+    }
+
+    function firstText(root, selectors) {
+        for (const selector of selectors) {
+            const text = root?.querySelector(selector)?.textContent?.trim();
+            if (text) return text;
+        }
+        return "";
+    }
+
+    /** Title and channel as the page shows them; either may come back empty. */
+    function readShortDetails(video, key) {
+        const renderer =
+            video?.closest("ytd-reel-video-renderer") ||
+            document.querySelector("ytd-reel-video-renderer[is-active]");
+        let title = firstText(renderer, TITLE_SELECTORS);
+        // The tab title follows the URL, so it is only trusted once they agree.
+        if (!title && location.pathname === key) {
+            title = document.title.replace(/\s*-\s*YouTube$/, "").trim();
+            if (title === "YouTube") title = "";
+        }
+        return { title, channel: firstText(renderer, CHANNEL_SELECTORS) };
+    }
+
+    function recordRecentShort(video) {
+        if (!settings.historyEnabled) return;
+        const id = shortIdOf(watchedShortKey);
+        if (!id) return;
+        sendToWorker({
+            type: "ADD_RECENT_SHORT",
+            short: {
+                id,
+                ...readShortDetails(video, watchedShortKey),
+                lengthSeconds: Number.isFinite(video.duration)
+                    ? video.duration
+                    : 0,
+            },
+        });
     }
 
     function flushWatchTime() {
@@ -185,12 +260,19 @@
         );
     }
 
-    /** Seconds of playback after which `video` counts as watched. */
+    /**
+     * Real seconds of playback after which `video` counts as watched. Half
+     * of a sped-up Short takes less real time, but never under
+     * MIN_WATCHED_SECONDS, which keeps the Lazyboard's anti-cheat satisfied.
+     */
     function watchedThreshold(video) {
         const duration = video?.duration;
         if (!Number.isFinite(duration) || duration <= 0)
             return UNKNOWN_LENGTH_WATCHED_SECONDS;
-        return Math.max(MIN_WATCHED_SECONDS, duration * WATCHED_FRACTION);
+        return Math.max(
+            MIN_WATCHED_SECONDS,
+            effectiveLength(video) * WATCHED_FRACTION,
+        );
     }
 
     function samplePlaybackTime() {
@@ -202,6 +284,7 @@
             );
             pendingWatchSeconds += elapsed;
             currentShortWatchSeconds += elapsed;
+            sessionWatchSeconds += elapsed;
         }
 
         lastPlaybackSample = now;
@@ -213,7 +296,9 @@
             currentShortWatchSeconds >= watchedThreshold(watchedVideo)
         ) {
             countedCurrentShort = true;
+            sessionShorts += 1;
             sendStats({ shortsWatched: 1 });
+            recordRecentShort(watchedVideo);
         }
         if (pendingWatchSeconds >= WATCH_TIME_FLUSH_SECONDS) flushWatchTime();
     }
@@ -320,7 +405,9 @@
                 ? "Refresh this tab to reconnect the extension"
                 : state === "active"
                   ? "Pause auto-scroll"
-                  : "Resume auto-scroll";
+                  : sessionLimitReached
+                    ? "Session limit reached. Resume auto-scroll"
+                    : "Resume auto-scroll";
         statusButton.setAttribute("aria-label", description);
         statusButton.removeAttribute("title");
         const label = statusButton.querySelector(".label");
@@ -391,6 +478,7 @@
             }
             const nextEnabled = !settings.enabled;
             settings.enabled = nextEnabled;
+            if (nextEnabled) startSession();
             updateInjectedStatus();
             try {
                 await chrome.storage.sync.set({ enabled: nextEnabled });
@@ -458,9 +546,9 @@
             return;
         if (!Number.isFinite(video.duration) || video.duration <= 0) return;
 
-        const remaining = video.duration - video.currentTime;
+        const remaining = remainingSeconds(video);
         if (remaining >= 0 && remaining <= END_THRESHOLD_SECONDS) {
-            scheduleAdvance();
+            handleReachedEnd();
             return;
         }
         if (
@@ -479,7 +567,11 @@
             watchedVideo.removeEventListener("timeupdate", handleVideoProgress);
             watchedVideo.removeEventListener(
                 "durationchange",
-                handleVideoProgress,
+                handleNewMetadata,
+            );
+            watchedVideo.removeEventListener(
+                "loadedmetadata",
+                handleNewMetadata,
             );
             watchedVideo.removeEventListener("playing", handleVideoProgress);
             watchedVideo.removeEventListener("timeupdate", handleBadgeProgress);
@@ -504,6 +596,9 @@
         const shortChanged = nextKey !== watchedShortKey;
         if (!videoChanged && !shortChanged) return;
 
+        // YouTube can move one video element from Short to Short. Until it
+        // loads the new one, its duration is still the last Short's.
+        const previousDuration = watchedVideo?.duration;
         cancelPendingAdvance();
         unwatchVideo();
         watchedVideo = video;
@@ -511,12 +606,20 @@
         hasTriggeredForCurrentShort = false;
         currentShortWatchSeconds = 0;
         countedCurrentShort = false;
+        completedPlays = 0;
+        endReachedThisPass = false;
+        skipCheckedForCurrentShort = false;
+        metadataFresh = videoChanged || video?.duration !== previousDuration;
 
         if (video) {
+            applyPlaybackSpeed(video);
             video.addEventListener("timeupdate", handleVideoProgress, {
                 passive: true,
             });
-            video.addEventListener("durationchange", handleVideoProgress, {
+            video.addEventListener("durationchange", handleNewMetadata, {
+                passive: true,
+            });
+            video.addEventListener("loadedmetadata", handleNewMetadata, {
                 passive: true,
             });
             video.addEventListener("playing", handleVideoProgress, {
@@ -601,32 +704,117 @@
         }, activeInterval);
     }
 
+    /** Pauses a playing Short when its tab is hidden, if the setting is on. */
+    function pauseWhileHidden() {
+        const video = watchedVideo;
+        if (!settings.pauseWhenHidden || !isShortsPage() || !video) return;
+        if (video.paused) return;
+        pausedWhileHidden = video;
+        pausedWhileHiddenKey = watchedShortKey;
+        video.pause();
+    }
+
+    /**
+     * Resumes only what pauseWhileHidden paused, and only if it is still the
+     * same Short: one the person paused themselves stays paused.
+     */
+    function resumeAfterHidden() {
+        const video = pausedWhileHidden;
+        const key = pausedWhileHiddenKey;
+        pausedWhileHidden = null;
+        pausedWhileHiddenKey = "";
+        if (!video?.isConnected || !video.paused || !isShortsPage()) return;
+        if (video !== watchedVideo || getShortKey(video) !== key) return;
+        video.play()?.catch?.(() => {});
+    }
+
     function handleVisibilityChange() {
         samplePlaybackTime();
         if (document.hidden) {
             flushWatchTime();
             stopEndMonitor();
+            pauseWhileHidden();
         } else {
+            resumeAfterHidden();
             refreshActiveVideo();
             handleVideoProgress();
         }
     }
 
+    /**
+     * Sets the chosen speed on `video`. Speed 1 only undoes a speed this
+     * extension set, so YouTube's own speed choice is otherwise untouched.
+     */
+    function applyPlaybackSpeed(video, { evenAfterStart = false } = {}) {
+        if (!video) return;
+        const speed = settings.playbackSpeed;
+        if (speed === 1) {
+            if (!speedChangedVideos.has(video)) return;
+            speedChangedVideos.delete(video);
+            video.defaultPlaybackRate = 1;
+            video.playbackRate = 1;
+            return;
+        }
+        if (!evenAfterStart && currentShortWatchSeconds > SPEED_SETTLE_SECONDS)
+            return;
+        speedChangedVideos.add(video);
+        // The default rate carries over when the element loads another Short.
+        if (video.defaultPlaybackRate !== speed)
+            video.defaultPlaybackRate = speed;
+        if (video.playbackRate !== speed) video.playbackRate = speed;
+    }
+
+    function handleNewMetadata() {
+        metadataFresh = true;
+        handleVideoProgress();
+    }
+
+    /**
+     * Moves past a Short whose length at the current speed is outside the
+     * skip range. Checked once per Short, after its own length is known.
+     */
+    function skipIfOutOfRange(video) {
+        if (skipCheckedForCurrentShort || !metadataFresh) return false;
+        const range = skipRange(settings);
+        if (!range) return false;
+        skipCheckedForCurrentShort = true;
+        if (skippedShortKeys.has(watchedShortKey)) return false;
+        const length = effectiveLength(video);
+        if (
+            !(range.min && length < range.min) &&
+            !(range.max && length > range.max)
+        )
+            return false;
+        skippedShortKeys.add(watchedShortKey);
+        stopEndMonitor();
+        hasTriggeredForCurrentShort = true;
+        goToNextShort(video, watchedShortKey, { skipped: true });
+        return true;
+    }
+
     function handleVideoProgress() {
         const video = watchedVideo;
         samplePlaybackTime();
+        if (!video) return;
+        applyPlaybackSpeed(video);
         if (
             !settings.enabled ||
             !isShortsPage() ||
-            !video ||
             video.paused ||
             hasTriggeredForCurrentShort
         )
             return;
         if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+        if (skipIfOutOfRange(video)) return;
 
-        const remaining = video.duration - video.currentTime;
+        const remaining = remainingSeconds(video);
         updateBadge(video);
+        // Back near the start: the Short looped, so its next end is a new play.
+        if (
+            remaining > END_MONITOR_WINDOW_SECONDS ||
+            video.currentTime < video.duration / 2
+        )
+            endReachedThisPass = false;
         if (remaining < 0 || remaining > END_MONITOR_WINDOW_SECONDS) return;
         if (remaining > END_THRESHOLD_SECONDS) {
             if (endMonitorFrame === null)
@@ -634,6 +822,56 @@
             return;
         }
 
+        handleReachedEnd();
+    }
+
+    function sessionIsOver() {
+        return (
+            (settings.sessionShorts > 0 &&
+                sessionShorts >= settings.sessionShorts) ||
+            (settings.sessionMinutes > 0 &&
+                sessionWatchSeconds >= settings.sessionMinutes * 60)
+        );
+    }
+
+    function startSession() {
+        sessionShorts = 0;
+        sessionWatchSeconds = 0;
+        sessionLimitReached = false;
+    }
+
+    /** Stops on the Short that used up the session, so it doesn't loop on. */
+    function endSession(video) {
+        hasTriggeredForCurrentShort = true;
+        sessionLimitReached = true;
+        settings.enabled = false;
+        video.pause();
+        updateBadge();
+        updateInjectedStatus();
+        try {
+            void chrome.storage.sync.set({ enabled: false }).catch(() => {});
+        } catch {
+            deactivateStaleInstance();
+        }
+    }
+
+    /**
+     * The Short is at its end. Each end counts as one play; YouTube loops the
+     * Short until it has played loopCount times, and then the session limit
+     * either ends things here or auto-scroll moves on.
+     */
+    function handleReachedEnd() {
+        const video = watchedVideo;
+        if (!video || video.paused || hasTriggeredForCurrentShort) return;
+        if (endReachedThisPass) return;
+        stopEndMonitor();
+        endReachedThisPass = true;
+        completedPlays += 1;
+        if (completedPlays < settings.loopCount) return;
+        if (sessionIsOver()) {
+            endSession(video);
+            return;
+        }
         scheduleAdvance();
     }
 
@@ -740,8 +978,9 @@
         else window.scrollBy({ top: distance, behavior: "smooth" });
     }
 
-    function goToNextShort(sourceVideo, sourceKey) {
-        sendStats({ autoScrolled: 1 });
+    /** A skip isn't an auto-scroll: the Short was never watched to its end. */
+    function goToNextShort(sourceVideo, sourceKey, { skipped = false } = {}) {
+        if (!skipped) sendStats({ autoScrolled: 1 });
         const nextButton = findNextButton();
         if (nextButton) {
             nextButton.click();
@@ -756,19 +995,6 @@
             return;
         }
         scrollToNextShort(sourceVideo);
-    }
-
-    function parseShortcut(value) {
-        if (value === undefined) return DEFAULT_SHORTCUT;
-        if (!value || typeof value.code !== "string" || !value.code)
-            return null;
-        return {
-            code: value.code,
-            ctrlKey: Boolean(value.ctrlKey),
-            altKey: Boolean(value.altKey),
-            shiftKey: Boolean(value.shiftKey),
-            metaKey: Boolean(value.metaKey),
-        };
     }
 
     function isEditableTarget(event) {
@@ -816,34 +1042,40 @@
 
     async function loadSettings() {
         try {
-            const saved = await chrome.storage.sync.get(DEFAULT_SETTINGS);
-            settings.enabled = saved.enabled !== false;
-            settings.badgeEnabled = saved.badgeEnabled !== false;
-            settings.delaySeconds = Math.min(
-                5,
-                Math.max(0, Number(saved.delaySeconds) || 0),
-            );
-            settings.shortcut = parseShortcut(saved.shortcut);
+            storedSettings = await chrome.storage.sync.get([
+                ...SYNC_SETTING_KEYS,
+            ]);
+            settings = parseSettings(storedSettings);
         } catch (error) {
             console.warn("Shorts Auto Scroll: could not load settings", error);
         }
     }
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName !== "sync") return;
-        if (changes.shortcut)
-            settings.shortcut = parseShortcut(changes.shortcut.newValue);
-        if (changes.enabled)
-            settings.enabled = changes.enabled.newValue !== false;
-        if (changes.badgeEnabled)
-            settings.badgeEnabled = changes.badgeEnabled.newValue !== false;
-        if (changes.delaySeconds) {
-            settings.delaySeconds = Math.min(
-                5,
-                Math.max(0, Number(changes.delaySeconds.newValue) || 0),
-            );
-            cancelPendingAdvance({ rearm: true });
+        if (areaName !== "sync" || !extensionContextValid) return;
+        const previous = settings;
+        for (const key of SYNC_SETTING_KEYS) {
+            if (!(key in changes)) continue;
+            if (changes[key].newValue === undefined) delete storedSettings[key];
+            else storedSettings[key] = changes[key].newValue;
         }
+        settings = parseSettings(storedSettings);
+
+        // Turning auto-scroll back on, anywhere, starts a new session.
+        if (
+            changes.enabled?.oldValue === false &&
+            changes.enabled.newValue !== false
+        )
+            startSession();
+        if (settings.playbackSpeed !== previous.playbackSpeed)
+            applyPlaybackSpeed(watchedVideo, { evenAfterStart: true });
+        if (
+            settings.skipShorterThan !== previous.skipShorterThan ||
+            settings.skipLongerThan !== previous.skipLongerThan
+        )
+            skipCheckedForCurrentShort = false;
+        if (!settings.pauseWhenHidden) pausedWhileHidden = null;
+        if (changes.delaySeconds) cancelPendingAdvance({ rearm: true });
         if (!settings.enabled) {
             cancelPendingAdvance({ rearm: true });
             stopEndMonitor();
@@ -862,6 +1094,9 @@
                 onShortsPage: isShortsPage(),
                 videoDetected: Boolean(watchedVideo),
                 enabled: settings.enabled,
+                sessionShorts,
+                sessionWatchSeconds: Math.floor(sessionWatchSeconds),
+                sessionLimitReached,
             });
         }
     });

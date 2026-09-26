@@ -3,6 +3,8 @@ import { cn } from "@/popup/lib/utils";
 import type { ReactNode } from "react";
 
 interface SettingSectionProps {
+    /** Lets the Settings pills scroll to this section. */
+    id?: string;
     title: string;
     description?: string;
     children: ReactNode;
@@ -13,6 +15,7 @@ interface SettingSectionProps {
 
 /** A titled group of rows: heading and subtitle outside, rows in one card. */
 export function SettingSection({
+    id,
     title,
     description,
     children,
@@ -20,11 +23,15 @@ export function SettingSection({
     cardClassName,
 }: SettingSectionProps) {
     return (
-        <section className={cn("space-y-1.5", className)}>
+        <section
+            id={id}
+            // Room above the heading when a Settings pill scrolls here.
+            className={cn("scroll-mt-3 space-y-1.5", className)}
+        >
             <div className="px-0.5">
-                <h3 className="text-[14.5px] leading-tight font-semibold tracking-tight">
+                <h2 className="px-0.5 text-[15px] leading-tight font-semibold tracking-tight">
                     {title}
-                </h3>
+                </h2>
                 {description ? (
                     <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
                         {description}

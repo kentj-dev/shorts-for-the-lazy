@@ -1,3 +1,4 @@
+import { StepButton } from "@/popup/components/StepperRow";
 import { Slider } from "@/popup/components/ui/slider";
 import { clampDelay, DELAY_STEP, MAX_DELAY_SECONDS } from "@/shared/settings";
 import { Minus, Plus } from "lucide-react";
@@ -6,27 +7,6 @@ import { useEffect, useState } from "react";
 interface DelayRowProps {
     value: number;
     onChange: (next: number) => void;
-}
-
-function StepButton({
-    label,
-    onClick,
-    children,
-}: {
-    label: string;
-    onClick: () => void;
-    children: React.ReactNode;
-}) {
-    return (
-        <button
-            type="button"
-            aria-label={label}
-            onClick={onClick}
-            className="flex size-7 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:outline-none"
-        >
-            {children}
-        </button>
-    );
 }
 
 /**

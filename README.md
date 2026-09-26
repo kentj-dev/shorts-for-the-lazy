@@ -17,6 +17,19 @@ While developing, `npm run dev` rebuilds on every change; reload the extension i
 
 Open `https://www.youtube.com/shorts/`, then click the extension's toolbar icon. The popup lets you turn auto-scroll and its countdown badge on or off, and set a delay from 0 to 5 seconds (0 seconds by default). Settings are synchronized with `chrome.storage.sync` and apply to open YouTube tabs immediately.
 
+The popup's **Playback** section also sets:
+
+- **Speed** (0.75× to 2×), applied to each Short as it starts. At 1× YouTube's own speed is left alone, and a speed picked in YouTube's menu stands for that Short. The countdown, the skip lengths and the "watched" rule all use real time at this speed, so a 30-second Short at 2× counts down from 15.
+- **Plays per Short** (1× to 5×): the Short loops this many times before auto-scroll moves on.
+- **Pause in background** (on by default): the Short pauses when its tab is hidden and resumes on return. A Short you paused yourself stays paused.
+
+Settings adds two sections:
+
+- **Skip Shorts** moves past a Short at once when its length at your speed is shorter or longer than the limits. Skips don't count as auto-scrolls, and scrolling back up to a skipped Short plays it.
+- **Session Limit** stops auto-scroll after a number of Shorts or minutes of watching, whichever comes first. The last Short finishes and is paused, auto-scroll turns off, and turning it back on starts a new session. The popup's Current Tab card shows the session's progress.
+
+The popup's history button and its **This month** link open a full-tab page with three tabs: **This month** (the monthly stats), **Settings** (everything in the popup's Settings plus Playback, with room to breathe), and **History**, the last 200 Shorts you watched, grouped by day, with thumbnails, search, and links back to each Short. History stays in `chrome.storage.local` and can be turned off or cleared on that page.
+
 Press `Alt+Shift+S` (`Command+Shift+S` on macOS) on a YouTube tab to toggle auto-scroll without opening the popup. To change it, open the popup's gear button, then **Keyboard Shortcut → Change** and press the new combination. It must include Ctrl, Alt or Command so it never fires while typing, and it is ignored while a text field has focus.
 
 Chrome does not let an extension change its own command shortcuts, so that in-page shortcut is handled by the content script. The extension also registers the same toggle as a Chrome command, which works in any tab; it can only be changed at `chrome://extensions/shortcuts`. If both are set to the same keys, one press still toggles once.
@@ -27,7 +40,7 @@ The popup's Settings page also holds the **Lazyboard**, the System / Light / Dar
 
 The [Global Lazyboard](https://lazyboard.hamiken.com) is an opt-in public leaderboard; its server and page live in `../lazyboard`. Nothing is sent until you pick a **Lazy Name** in Settings, press **Join**, and agree to the privacy notice in the sheet that slides up. Names are checked against a word filter in the popup, and again by the server. After joining, the service worker (`src/background/lazyboard.ts`) sends only the activity since the previous sync, roughly once an hour at a minute the server assigned. Failed syncs are retried later under the same event ID, so they are never counted twice. The server computes every total and score itself. **Leave the Lazyboard** deletes your name and stats from the server, and so does 45 days without any activity; the popup warns from day 30 and explains afterwards.
 
-A Short counts as watched once half of its length has actually played (never under 1 second), so swiping past one doesn't count. The same rule feeds the popup's stats and the Lazyboard. The monthly stats page links to the Global Lazyboard.
+A Short counts as watched once half of its length has actually played (never under 1 second), so swiping past one doesn't count. The same rule feeds the popup's stats and the Lazyboard. The full-tab page links to the Global Lazyboard.
 
 Build with `LAZYBOARD_URL=http://localhost:8080 npm run build` to point the extension at a local server.
 
@@ -46,11 +59,11 @@ When a playing video is within 160 ms of its duration, the extension schedules e
 ```text
 src/manifest.json              Extension metadata, permissions, popup, and content-script registration
 src/content/content.js         Active-video detection, end detection, SPA monitoring, navigation, in-page shortcut
-src/background/background.js   Toolbar countdown badge, daily stats, and the auto-scroll toggle
+src/background/background.js   Toolbar countdown badge, daily stats, history, and the auto-scroll toggle
 src/background/lazyboard.ts    Opt-in Lazyboard registration, hourly delta sync, leaving
 src/images/                    Files loaded by URL: toolbar icon and the on-page control's icons
-src/popup/                     The popup and the monthly stats tab (stats.html): React + Tailwind + shadcn/ui + Recharts
-src/shared/                    Settings, shortcut, stats, Lazyboard, name filter, and privacy notice
+src/popup/                     The popup and the full-tab pages (stats.html#month, #history): React + Tailwind + shadcn/ui + Recharts
+src/shared/                    Settings, shortcut, stats, history, Lazyboard, name filter, and privacy notice
 src/styles/popup.css           Theme tokens (light and dark) and base styles
 scripts/build.mjs              Vite build for the popup, content script, and service worker
 ```

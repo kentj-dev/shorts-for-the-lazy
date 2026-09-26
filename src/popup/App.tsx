@@ -37,7 +37,11 @@ export function App() {
                     onThemeChange={setTheme}
                 />
             ) : (
-                <HomeView settings={settings} save={save} />
+                <HomeView
+                    settings={settings}
+                    save={save}
+                    onOpenSettings={() => setView("settings")}
+                />
             )}
         </Shell>
     );

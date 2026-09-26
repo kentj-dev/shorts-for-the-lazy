@@ -138,7 +138,7 @@ export function PrivacySheet(props: PrivacySheetProps) {
                 side="bottom"
                 showCloseButton={false}
                 aria-busy={busy}
-                className="max-h-[88vh] gap-0 overflow-hidden rounded-t-[26px] border-edge bg-card shadow-[0_-16px_48px_rgba(0,0,0,0.28)]"
+                className="mx-auto max-h-[88vh] w-full max-w-md gap-0 overflow-hidden rounded-t-[26px] border-edge bg-card shadow-[0_-16px_48px_rgba(0,0,0,0.28)]"
             >
                 <div
                     onPointerDown={onPointerDown}

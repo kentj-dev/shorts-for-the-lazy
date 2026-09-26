@@ -2,13 +2,21 @@ import buyMeACoffee from "@/assets/buymeacoffee.svg";
 import hamikenLogo from "@/assets/hamiken.png";
 import { version } from "@/popup/components/FooterNote";
 import { LazyboardSection } from "@/popup/components/LazyboardSection";
+import { PlaybackSection } from "@/popup/components/PlaybackSection";
 import { SettingSection } from "@/popup/components/SettingSection";
 import { ShortcutRecorder } from "@/popup/components/ShortcutRecorder";
+import { StepperRow } from "@/popup/components/StepperRow";
 import { Button } from "@/popup/components/ui/button";
 import { useBrowserShortcut } from "@/popup/hooks/useBrowserShortcut";
 import type { ThemePreference } from "@/popup/lib/theme";
 import { cn } from "@/popup/lib/utils";
-import type { Settings } from "@/shared/settings";
+import {
+    SESSION_MINUTES_OPTIONS,
+    SESSION_SHORTS_OPTIONS,
+    SKIP_LONGER_OPTIONS,
+    SKIP_SHORTER_OPTIONS,
+    type Settings,
+} from "@/shared/settings";
 import type { Shortcut } from "@/shared/shortcut";
 import {
     ExternalLink,
@@ -21,6 +29,34 @@ import { useCallback } from "react";
 
 const MAKER_URL = "https://apps.hamiken.com";
 const COFFEE_URL = "https://www.buymeacoffee.com/kentjdev";
+
+/** "Off", "45s", "1m 30s", "2m". */
+function formatSeconds(seconds: number): string {
+    if (seconds === 0) return "Off";
+    if (seconds < 60) return `${seconds}s`;
+    const rest = seconds % 60;
+    return rest ? `${Math.floor(seconds / 60)}m ${rest}s` : `${seconds / 60}m`;
+}
+
+/** "Off", "45 min", "1h 30m", "2h". */
+function formatMinutes(minutes: number): string {
+    if (minutes === 0) return "Off";
+    if (minutes < 60) return `${minutes} min`;
+    const rest = minutes % 60;
+    return rest ? `${Math.floor(minutes / 60)}h ${rest}m` : `${minutes / 60}h`;
+}
+
+/** The pills under the heading, each scrolling to one section below. */
+const SECTION_LINKS: ReadonlyArray<{ id: string; label: string }> = [
+    { id: "settings-skip", label: "Skip" },
+    { id: "settings-session", label: "Session" },
+    { id: "settings-appearance", label: "Appearance" },
+    { id: "settings-shortcut", label: "Shortcut" },
+    { id: "settings-lazyboard", label: "Lazyboard" },
+    { id: "settings-support", label: "Support" },
+];
+
+const PLAYBACK_LINK = { id: "settings-playback", label: "Playback" };
 
 const THEME_OPTIONS: ReadonlyArray<{
     value: ThemePreference;
@@ -37,6 +73,11 @@ interface SettingsViewProps {
     save: (patch: Partial<Settings>) => Promise<void>;
     theme: ThemePreference;
     onThemeChange: (next: ThemePreference) => void;
+    /**
+     * Also shows the Playback section. The Settings tab needs it; the popup
+     * keeps Playback on its home view instead.
+     */
+    showPlayback?: boolean;
 }
 
 export function SettingsView({
@@ -44,6 +85,7 @@ export function SettingsView({
     save,
     theme,
     onThemeChange,
+    showPlayback = false,
 }: SettingsViewProps) {
     const browserShortcut = useBrowserShortcut();
     const saveShortcut = useCallback(
@@ -58,13 +100,91 @@ export function SettingsView({
                     Settings
                 </h2>
                 <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
-                    Your name, your look, your shortcut.
+                    Your rules, your name, your look, your shortcut.
                 </p>
+                <nav
+                    aria-label="Settings sections"
+                    className="mt-2.5 flex flex-wrap gap-1.5"
+                >
+                    {(showPlayback
+                        ? [PLAYBACK_LINK, ...SECTION_LINKS]
+                        : SECTION_LINKS
+                    ).map(({ id, label }) => (
+                        <button
+                            key={id}
+                            type="button"
+                            onClick={() =>
+                                document.getElementById(id)?.scrollIntoView({
+                                    behavior: "smooth",
+                                    block: "start",
+                                })
+                            }
+                            className="cursor-pointer rounded-full border border-edge bg-secondary px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-tint-brand hover:text-tint-brand-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </nav>
             </div>
 
-            <LazyboardSection savedName={settings.lazyName} />
+            {showPlayback ? (
+                <PlaybackSection settings={settings} save={save} />
+            ) : null}
 
             <SettingSection
+                id="settings-skip"
+                title="Skip Shorts"
+                description="Moves past a Short right away when its length at your speed is outside these limits."
+            >
+                {/* Each list only offers values that leave some Shorts to watch. */}
+                <StepperRow
+                    label="Shorter than"
+                    value={settings.skipShorterThan}
+                    options={SKIP_SHORTER_OPTIONS.filter(
+                        (seconds) =>
+                            !settings.skipLongerThan ||
+                            seconds < settings.skipLongerThan,
+                    )}
+                    format={formatSeconds}
+                    onChange={(skipShorterThan) =>
+                        void save({ skipShorterThan })
+                    }
+                />
+                <StepperRow
+                    label="Longer than"
+                    value={settings.skipLongerThan}
+                    options={SKIP_LONGER_OPTIONS.filter(
+                        (seconds) =>
+                            seconds === 0 || seconds > settings.skipShorterThan,
+                    )}
+                    format={formatSeconds}
+                    onChange={(skipLongerThan) => void save({ skipLongerThan })}
+                />
+            </SettingSection>
+
+            <SettingSection
+                id="settings-session"
+                title="Session Limit"
+                description="Stops auto-scroll after whichever comes first. Turning it back on starts a new session."
+            >
+                <StepperRow
+                    label="Shorts"
+                    value={settings.sessionShorts}
+                    options={SESSION_SHORTS_OPTIONS}
+                    format={(count) => (count === 0 ? "Off" : String(count))}
+                    onChange={(sessionShorts) => void save({ sessionShorts })}
+                />
+                <StepperRow
+                    label="Watch time"
+                    value={settings.sessionMinutes}
+                    options={SESSION_MINUTES_OPTIONS}
+                    format={formatMinutes}
+                    onChange={(sessionMinutes) => void save({ sessionMinutes })}
+                />
+            </SettingSection>
+
+            <SettingSection
+                id="settings-appearance"
                 title="Appearance"
                 description="System follows your device's light or dark setting."
             >
@@ -98,6 +218,7 @@ export function SettingsView({
             </SettingSection>
 
             <SettingSection
+                id="settings-shortcut"
                 title="Keyboard Shortcut"
                 description="Pause or resume auto-scroll without opening this popup."
             >
@@ -135,7 +256,12 @@ export function SettingsView({
                 </div>
             </SettingSection>
 
+            <div id="settings-lazyboard" className="scroll-mt-3">
+                <LazyboardSection savedName={settings.lazyName} />
+            </div>
+
             <SettingSection
+                id="settings-support"
                 title="Support"
                 description="Enjoying the laziness? Fuel the next update."
                 cardClassName="bg-[#FFDD00]"

@@ -1,9 +1,8 @@
 import { AutoScrollCard } from "@/popup/components/AutoScrollCard";
 import { CurrentTabCard } from "@/popup/components/CurrentTabCard";
-import { DelayRow } from "@/popup/components/DelayRow";
 import { FooterNote } from "@/popup/components/FooterNote";
-import { SettingRow } from "@/popup/components/SettingRow";
-import { SettingSection } from "@/popup/components/SettingSection";
+import { PlaybackSection } from "@/popup/components/PlaybackSection";
+import { QuickNav } from "@/popup/components/QuickNav";
 import { TodayStats } from "@/popup/components/TodayStats";
 import { useTabStatus } from "@/popup/hooks/useTabStatus";
 import { useTodayStats } from "@/popup/hooks/useTodayStats";
@@ -12,10 +11,11 @@ import type { Settings } from "@/shared/settings";
 interface HomeViewProps {
     settings: Settings;
     save: (patch: Partial<Settings>) => Promise<void>;
+    onOpenSettings: () => void;
 }
 
-export function HomeView({ settings, save }: HomeViewProps) {
-    const status = useTabStatus(settings.enabled);
+export function HomeView({ settings, save, onOpenSettings }: HomeViewProps) {
+    const status = useTabStatus(settings);
     const stats = useTodayStats();
 
     return (
@@ -25,19 +25,9 @@ export function HomeView({ settings, save }: HomeViewProps) {
                 onChange={(enabled) => void save({ enabled })}
             />
             <CurrentTabCard status={status} />
-            <SettingSection title="Playback">
-                <SettingRow
-                    label="Countdown badge"
-                    hint="Shows the time left on the Short."
-                    checked={settings.badgeEnabled}
-                    onChange={(badgeEnabled) => void save({ badgeEnabled })}
-                />
-                <DelayRow
-                    value={settings.delaySeconds}
-                    onChange={(delaySeconds) => void save({ delaySeconds })}
-                />
-            </SettingSection>
+            <PlaybackSection settings={settings} save={save} />
             <TodayStats stats={stats} />
+            <QuickNav onOpenSettings={onOpenSettings} />
             <FooterNote />
         </div>
     );

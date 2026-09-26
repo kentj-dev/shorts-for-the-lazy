@@ -4,7 +4,7 @@
  * Chrome does not let an extension change its own `chrome.commands` keys, so
  * the popup records this one itself and content.js listens for it. Stored
  * under `shortcut` in sync storage: missing means DEFAULT_SHORTCUT, null means
- * turned off. Keep the default in step with src/content/content.js.
+ * turned off. content.js reads it through parseSettings too.
  */
 
 export interface Shortcut {

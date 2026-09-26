@@ -1,12 +1,6 @@
 import { Card } from "@/popup/components/ui/card";
 import { formatDuration, type DailyStats } from "@/shared/stats";
-import {
-    ChartColumn,
-    ChevronsDown,
-    Clock,
-    Play,
-    type LucideIcon,
-} from "lucide-react";
+import { ChevronsDown, Clock, Play, type LucideIcon } from "lucide-react";
 
 export function StatCard({
     icon: Icon,
@@ -44,23 +38,9 @@ export function StatCard({
 export function TodayStats({ stats }: { stats: DailyStats }) {
     return (
         <section className="space-y-1.5">
-            <div className="flex items-center justify-between px-0.5">
-                <h2 className="text-[15px] leading-tight font-semibold tracking-tight">
-                    Today
-                </h2>
-                <button
-                    type="button"
-                    onClick={() =>
-                        void chrome.tabs.create({
-                            url: chrome.runtime.getURL("popup/stats.html"),
-                        })
-                    }
-                    className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-                >
-                    <ChartColumn className="size-3.5" strokeWidth={2} />
-                    This month
-                </button>
-            </div>
+            <h2 className="px-0.5 text-[15px] leading-tight font-semibold tracking-tight">
+                Today
+            </h2>
             <div className="flex gap-2.5">
                 <StatCard
                     icon={Play}

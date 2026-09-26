@@ -67,9 +67,16 @@ export function AvatarSheet({
                 side="bottom"
                 showCloseButton={false}
                 aria-busy={busy}
-                // Focusing the first swatch would look like a second selection.
-                onOpenAutoFocus={(event) => event.preventDefault()}
-                className="max-h-[88vh] gap-0 overflow-hidden rounded-t-[26px] border-edge bg-card shadow-[0_-16px_48px_rgba(0,0,0,0.28)]"
+                // Focusing the first swatch would look like a second selection,
+                // so focus the sheet itself. Focus can't stay on the opening
+                // button, which the open sheet hides with aria-hidden.
+                onOpenAutoFocus={(event) => {
+                    event.preventDefault();
+                    (event.target as HTMLElement | null)?.focus({
+                        preventScroll: true,
+                    });
+                }}
+                className="mx-auto max-h-[88vh] w-full max-w-md gap-0 overflow-hidden rounded-t-[26px] border-edge bg-card shadow-[0_-16px_48px_rgba(0,0,0,0.28)]"
             >
                 <div className="flex shrink-0 justify-center pt-2.5 pb-1.5">
                     <span className="h-[5px] w-10 rounded-full bg-muted-foreground/35" />

@@ -1,6 +1,12 @@
 "use strict";
 
 import { createLazyboard } from "./lazyboard";
+import {
+    addToHistory,
+    HISTORY_KEY,
+    parseHistory,
+    parseRecentShort,
+} from "@/shared/history";
 
 const DAILY_STATS_PREFIX = "dailyStats:";
 const INSTALL_PAGE_URL =
@@ -79,6 +85,17 @@ async function addDailyStats(delta) {
     await lazyboard.addPending(delta).catch(() => {});
 }
 
+/** Local only: the History page reads this list, and it is never synced or sent. */
+async function addRecentShort(short) {
+    const entry = parseRecentShort({ ...short, watchedAt: Date.now() });
+    if (!entry) return;
+    const stored = await chrome.storage.local.get(HISTORY_KEY);
+    const history = parseHistory(stored[HISTORY_KEY]);
+    await chrome.storage.local.set({
+        [HISTORY_KEY]: addToHistory(history, entry),
+    });
+}
+
 async function setBadgeForTab(tabId, text) {
     const updates = [
         chrome.action.setBadgeBackgroundColor({ tabId, color: "#18191B" }),
@@ -93,8 +110,11 @@ async function setBadgeForTab(tabId, text) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    // Joining and leaving come from the popup only, never from a web page's tab.
-    const fromPopup = sender.id === chrome.runtime.id && !sender.tab;
+    // Joining and leaving come from the extension's own pages (the popup or
+    // the Settings tab), never from a content script on a web page.
+    const fromPopup =
+        sender.id === chrome.runtime.id &&
+        Boolean(sender.url?.startsWith(chrome.runtime.getURL("")));
     if (message?.type === "LAZYBOARD_JOIN" && fromPopup) {
         lazyboard
             .join(
@@ -151,6 +171,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             () => sendResponse({ ok: false }),
         );
         return true;
+    }
+
+    if (message?.type === "ADD_RECENT_SHORT" && sender.tab?.id) {
+        // Same queue as the stats, so two tabs' additions never interleave.
+        queueStatsUpdate(() => addRecentShort(message.short)).catch(() => {});
+        return;
     }
 
     if (message?.type !== "SET_BADGE" || !sender.tab?.id) return;

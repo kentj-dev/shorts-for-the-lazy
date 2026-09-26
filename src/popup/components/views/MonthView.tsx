@@ -1,14 +1,10 @@
-import logo from "@/assets/logo.png";
-import { CoffeeButton } from "@/popup/components/CoffeeButton";
 import { MonthChart } from "@/popup/components/MonthChart";
-import { ThemeToggle } from "@/popup/components/ThemeToggle";
+import { PageLoader } from "@/popup/components/PageLoader";
 import { StatCard } from "@/popup/components/TodayStats";
 import { Card } from "@/popup/components/ui/card";
 import { useMonthStats } from "@/popup/hooks/useMonthStats";
-import { useTheme } from "@/popup/hooks/useTheme";
-import { LAZYBOARD_URL } from "@/shared/lazyboard";
 import { formatDuration, type DailyStats } from "@/shared/stats";
-import { ChevronsDown, Clock, Play, Trophy } from "lucide-react";
+import { ChevronsDown, Clock, Play } from "lucide-react";
 import { useMemo, useState } from "react";
 
 function sum(days: ReadonlyArray<{ stats: DailyStats }>): DailyStats {
@@ -26,9 +22,8 @@ function hasActivity(stats: DailyStats): boolean {
     return stats.shortsWatched + stats.watchSeconds + stats.autoScrolled > 0;
 }
 
-/** The current month's counters, opened in its own tab from the popup. */
-export function StatsPage() {
-    const [theme, setTheme] = useTheme();
+/** The current month's counters: totals, a chart, and a day-by-day table. */
+export function MonthView() {
     const [month] = useState(() => new Date());
     const days = useMonthStats(month);
 
@@ -42,42 +37,23 @@ export function StatsPage() {
     const perDay = (value: number): number => Math.round(value / daysSoFar);
 
     return (
-        <main className="mx-auto max-w-4xl px-4 pt-12 pb-24 sm:px-6">
-            <header className="flex items-center gap-3">
-                <img
-                    src={logo}
-                    alt=""
-                    className="size-11 shrink-0 rounded-xl bg-secondary"
-                />
-                <div className="min-w-0 flex-1">
-                    <h1 className="text-[22px] leading-tight font-semibold tracking-tight">
-                        {month.toLocaleDateString(undefined, {
-                            month: "long",
-                            year: "numeric",
-                        })}
-                    </h1>
-                    <p className="text-[13px] leading-snug text-muted-foreground">
-                        Shorts for the Lazy, this month so far.
-                    </p>
-                </div>
-                <a
-                    href={LAZYBOARD_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Global Lazyboard (opens in a new tab)"
-                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-edge bg-card px-3 text-[12.5px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-                >
-                    <Trophy
-                        className="size-3.5 text-primary"
-                        strokeWidth={2}
-                    />
-                    <span className="hidden sm:inline">Global Lazyboard</span>
-                </a>
-                <ThemeToggle value={theme} onChange={setTheme} />
-            </header>
+        <>
+            <div className="px-0.5">
+                <h2 className="text-[19px] leading-tight font-semibold tracking-tight">
+                    {month.toLocaleDateString(undefined, {
+                        month: "long",
+                        year: "numeric",
+                    })}
+                </h2>
+                <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
+                    This month so far.
+                </p>
+            </div>
 
-            {/* Nothing below the header until storage answers, so no zeros flash. */}
-            {!days ? null : (
+            {/* A placeholder until storage answers, so no zeros flash. */}
+            {!days ? (
+                <PageLoader />
+            ) : (
                 <div className="mt-6 space-y-6">
                     <div className="grid gap-3 sm:grid-cols-3">
                         <StatCard
@@ -172,7 +148,6 @@ export function StatsPage() {
                     </p>
                 </div>
             )}
-            <CoffeeButton />
-        </main>
+        </>
     );
 }

@@ -85,7 +85,7 @@ const popupBuild = () => ({
         rollupOptions: {
             input: {
                 popup: path.join(root, "src/popup/index.html"),
-                // The monthly stats page, opened in its own tab.
+                // The full-tab pages (This month, History), told apart by the URL hash.
                 stats: path.join(root, "src/popup/stats.html"),
             },
         },
