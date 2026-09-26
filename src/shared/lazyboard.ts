@@ -69,7 +69,18 @@ export interface InflightSync extends Counts {
     sequence: number;
 }
 
-export type LazyboardStatus = "active" | "suspicious" | "blocked";
+/**
+ * "review": hidden from the boards while the server's anti-cheat waits for a
+ * person to look. Its syncs still count.
+ */
+export type LazyboardStatus = "active" | "suspicious" | "review" | "blocked";
+
+/** A status from the server or storage; anything unknown reads as active. */
+export function parseLazyboardStatus(value: unknown): LazyboardStatus {
+    return value === "suspicious" || value === "review" || value === "blocked"
+        ? value
+        : "active";
+}
 
 export interface LazyboardState {
     installationId: string;
@@ -213,8 +224,7 @@ export function parseLazyboardState(value: unknown): LazyboardState | null {
             typeof raw.unreachableSince === "string"
                 ? raw.unreachableSince
                 : null,
-        status:
-            status === "suspicious" || status === "blocked" ? status : "active",
+        status: parseLazyboardStatus(status),
         privacyNoticeVersion: String(raw.privacyNoticeVersion ?? ""),
         agreedAt: String(raw.agreedAt ?? ""),
         shareCountry: raw.shareCountry === true,

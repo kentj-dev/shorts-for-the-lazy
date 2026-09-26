@@ -372,9 +372,11 @@ export function LazyboardSection({ savedName }: LazyboardSectionProps) {
         ? undefined
         : blocked
           ? "Paused for unusual activity"
-          : quietDays >= INACTIVE_WARNING_DAYS
-            ? `No activity lately: removed in ${daysLeft} day${daysLeft === 1 ? "" : "s"} unless you watch a Short`
-            : syncNote(membership.lastSyncAt, membership.syncMinute);
+          : membership.status === "review"
+            ? "Hidden from the board while recent activity is reviewed. It still counts."
+            : quietDays >= INACTIVE_WARNING_DAYS
+              ? `No activity lately: removed in ${daysLeft} day${daysLeft === 1 ? "" : "s"} unless you watch a Short`
+              : syncNote(membership.lastSyncAt, membership.syncMinute);
 
     return (
         <SettingSection

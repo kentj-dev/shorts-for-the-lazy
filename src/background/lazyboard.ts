@@ -29,6 +29,7 @@ import {
     hasCounts,
     manualSyncReadyAt,
     parseLazyboardState,
+    parseLazyboardStatus,
     type InflightSync,
     type JoinError,
     type LazyboardReply,
@@ -454,6 +455,9 @@ export function createLazyboard(queue: Queue) {
                 s.lastSyncAt = new Date().toISOString();
                 s.lastActiveAt = s.lastSyncAt;
                 s.unreachableSince = null;
+                // Older servers don't send it; keep what we have then.
+                if (typeof result.body.status === "string")
+                    s.status = parseLazyboardStatus(result.body.status);
             });
             return false;
         }
