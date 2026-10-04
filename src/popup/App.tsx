@@ -7,10 +7,10 @@ import { useState } from "react";
 
 type View = "home" | "settings";
 
-/** Scrolls inside a box capped under Chrome's 600px popup limit. */
+/** Uses the side panel's resizable width and full available height. */
 function Shell({ children }: { children: React.ReactNode }) {
     return (
-        <div className="max-h-[580px] w-96 overflow-y-auto p-3 pe-2">
+        <div className="min-h-dvh w-full p-3">
             {children}
         </div>
     );

@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
-/* Inter, self-hosted through @fontsource so the popup never calls out to a
+/* Inter, self-hosted through @fontsource so the panel never calls out to a
  * font CDN. Latin subsets only. */
 @import "@fontsource/inter/latin-400.css";
 @import "@fontsource/inter/latin-500.css";
 @import "@fontsource/inter/latin-600.css";
 
-/* Tailwind v4 scans sources relative to this file; src/ covers the popup. */
+/* Tailwind v4 scans sources relative to this file; src/ covers the panel. */
 @source '../';
 
 /*
  * Dark mode is a `.dark` class on <html> rather than prefers-color-scheme,
- * because the popup offers its own System / Light / Dark choice. For "System",
+ * because the panel offers its own System / Light / Dark choice. For "System",
  * src/popup/lib/theme.ts follows the OS setting and sets the class itself.
  */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -127,7 +127,7 @@
  * Chrome injects its own author stylesheet into every extension page:
  *   body { font-family: "Segoe UI", Tahoma, sans-serif; font-size: 75%; }
  * Unlayered rules beat every cascade layer, so the same declarations sitting
- * in Tailwind's `base` layer lose and the popup renders in Segoe UI at 12px.
+ * in Tailwind's `base` layer lose and the panel renders in Segoe UI at 12px.
  * Keeping these unlayered — and using `html body`, which also outranks the
  * injected `body` selector on specificity — wins regardless of source order.
  */
@@ -141,7 +141,7 @@ body {
 /*
  * Scrollbars: thin, quiet, no arrow buttons.
  *
- * The popup is Chromium-only, so the -webkit pseudo-elements are the right
+ * The panel is Chromium-only, so the -webkit pseudo-elements are the right
  * tool here. Do not also set the standard `scrollbar-width` /
  * `scrollbar-color` properties: when those are present Chrome ignores these
  * rules entirely, and the chunky default comes back.
@@ -192,8 +192,8 @@ body {
 }
 
 html body {
-    /* Chrome sizes the popup from the document. */
-    width: 384px;
+    width: 100%;
+    min-height: 100vh;
     font-family: var(--font-sans);
     /* Explicit, so the injected 75% cannot change what unsized text inherits. */
     font-size: 14px;
@@ -202,12 +202,10 @@ html body {
 }
 
 /*
- * The monthly stats page opens in a full tab, so it drops the popup width and
- * sits on a dot grid. The dots stay put while the page scrolls.
+ * The monthly stats page opens in a full tab and sits on a dot grid.
+ * The dots stay put while the page scrolls.
  */
 html[data-page="stats"] body {
-    width: auto;
-    min-height: 100vh;
     background-image: radial-gradient(var(--dot) 1px, transparent 1.5px);
     background-size: 22px 22px;
     background-attachment: fixed;

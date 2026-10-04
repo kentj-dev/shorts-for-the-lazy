@@ -74,7 +74,7 @@ interface SettingsViewProps {
     theme: ThemePreference;
     onThemeChange: (next: ThemePreference) => void;
     /**
-     * Also shows the Playback section. The Settings tab needs it; the popup
+     * Also shows the Playback section. The Settings tab needs it; the panel
      * keeps Playback on its home view instead.
      */
     showPlayback?: boolean;
@@ -220,7 +220,7 @@ export function SettingsView({
             <SettingSection
                 id="settings-shortcut"
                 title="Keyboard Shortcut"
-                description="Pause or resume auto-scroll without opening this popup."
+                description="Pause or resume auto-scroll without opening the side panel."
             >
                 <ShortcutRecorder
                     shortcut={settings.shortcut}

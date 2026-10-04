@@ -15,6 +15,11 @@ let statsUpdateQueue = Promise.resolve();
 /** The month pruneOldStats last cleaned up to, so it runs once per month. */
 let prunedMonthPrefix = "";
 
+// Let Chrome toggle the persistent panel when the toolbar icon is clicked.
+chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((error) => console.error("Could not configure the side panel", error));
+
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === "install") {
         void chrome.tabs.create({ url: INSTALL_PAGE_URL });
@@ -110,12 +115,12 @@ async function setBadgeForTab(tabId, text) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    // Joining and leaving come from the extension's own pages (the popup or
+    // Joining and leaving come from the extension's own pages (the side panel or
     // the Settings tab), never from a content script on a web page.
-    const fromPopup =
+    const fromExtensionPage =
         sender.id === chrome.runtime.id &&
         Boolean(sender.url?.startsWith(chrome.runtime.getURL("")));
-    if (message?.type === "LAZYBOARD_JOIN" && fromPopup) {
+    if (message?.type === "LAZYBOARD_JOIN" && fromExtensionPage) {
         lazyboard
             .join(
                 String(message.name ?? ""),
@@ -127,7 +132,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             );
         return true;
     }
-    if (message?.type === "LAZYBOARD_SET_COUNTRY" && fromPopup) {
+    if (message?.type === "LAZYBOARD_SET_COUNTRY" && fromExtensionPage) {
         lazyboard
             .setShareCountry(message.shareCountry === true)
             .then(sendResponse, () =>
@@ -135,7 +140,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             );
         return true;
     }
-    if (message?.type === "LAZYBOARD_SET_AVATAR" && fromPopup) {
+    if (message?.type === "LAZYBOARD_SET_AVATAR" && fromExtensionPage) {
         lazyboard
             .setAvatar(String(message.emoji ?? ""), String(message.color ?? ""))
             .then(sendResponse, () =>
@@ -143,7 +148,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             );
         return true;
     }
-    if (message?.type === "LAZYBOARD_SYNC_NOW" && fromPopup) {
+    if (message?.type === "LAZYBOARD_SYNC_NOW" && fromExtensionPage) {
         lazyboard
             .syncNow()
             .then(sendResponse, () =>
@@ -151,7 +156,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             );
         return true;
     }
-    if (message?.type === "LAZYBOARD_LEAVE" && fromPopup) {
+    if (message?.type === "LAZYBOARD_LEAVE" && fromExtensionPage) {
         lazyboard
             .leave()
             .then(sendResponse, () =>

@@ -4,7 +4,7 @@
  * Each target gets its own small Vite build, because Chrome MV3 has different
  * module rules per target:
  *
- *   popup       -> HTML + React + Tailwind, ES modules (fine inside an
+ *   side panel  -> HTML + React + Tailwind, ES modules (fine inside an
  *                  extension page)
  *   background  -> ES module service worker ("type": "module" in manifest)
  *   content     -> one IIFE file, because classic content scripts cannot use
@@ -69,7 +69,7 @@ const scriptBuild = (entry, outFile, format, globalName) => ({
     },
 });
 
-const popupBuild = () => ({
+const panelBuild = () => ({
     configFile: false,
     root: path.join(root, "src/popup"),
     base: "./",
@@ -84,7 +84,7 @@ const popupBuild = () => ({
         watch: watch ? {} : null,
         rollupOptions: {
             input: {
-                popup: path.join(root, "src/popup/index.html"),
+                sidepanel: path.join(root, "src/popup/index.html"),
                 // The full-tab pages (This month, History), told apart by the URL hash.
                 stats: path.join(root, "src/popup/stats.html"),
             },
@@ -93,7 +93,7 @@ const popupBuild = () => ({
 });
 
 const targets = [
-    popupBuild(),
+    panelBuild(),
     scriptBuild(
         "src/background/background.js",
         "background.js",

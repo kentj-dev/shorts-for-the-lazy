@@ -22,6 +22,7 @@ type StatusSettings = Pick<
 
 const CHECKING: TabStatus = { title: "Checking...", hint: "", active: false };
 const STATUS_TIMEOUT_MS = 1200;
+const STATUS_REFRESH_MS = 2000;
 
 const OFF: TabStatus = {
     title: "Auto-scroll is off",
@@ -47,10 +48,13 @@ function sessionProgress(
     return parts.join(" · ");
 }
 
-async function readTabStatus(settings: StatusSettings): Promise<TabStatus> {
+async function readTabStatus(
+    settings: StatusSettings,
+    windowId: number,
+): Promise<TabStatus> {
     let tab: chrome.tabs.Tab | undefined;
     try {
-        [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        [tab] = await chrome.tabs.query({ active: true, windowId });
     } catch {
         if (!settings.enabled) return OFF;
         return {
@@ -113,7 +117,7 @@ async function readTabStatus(settings: StatusSettings): Promise<TabStatus> {
     };
 }
 
-/** What auto-scroll is doing in the active tab, re-read when settings change. */
+/** Follows this panel's active tab and session while the panel stays open. */
 export function useTabStatus(settings: StatusSettings | null): TabStatus {
     const [status, setStatus] = useState<TabStatus>(CHECKING);
     const enabled = settings?.enabled;
@@ -123,13 +127,67 @@ export function useTabStatus(settings: StatusSettings | null): TabStatus {
     useEffect(() => {
         if (enabled === undefined) return undefined;
         let active = true;
-        void readTabStatus({ enabled, sessionShorts, sessionMinutes }).then(
-            (next) => {
-                if (active) setStatus(next);
+        let windowId: number | undefined;
+        let requestId = 0;
+        const refresh = (): void => {
+            if (windowId === undefined) return;
+            const currentRequest = ++requestId;
+            void readTabStatus(
+                { enabled, sessionShorts, sessionMinutes },
+                windowId,
+            ).then((next) => {
+                if (active && currentRequest === requestId) setStatus(next);
+            });
+        };
+        const onActivated = (info: chrome.tabs.TabActiveInfo): void => {
+            if (info.windowId === windowId) refresh();
+        };
+        const onUpdated = (
+            _tabId: number,
+            info: chrome.tabs.TabChangeInfo,
+            tab: chrome.tabs.Tab,
+        ): void => {
+            if (
+                tab.windowId === windowId &&
+                tab.active &&
+                (info.url !== undefined || info.status !== undefined)
+            ) {
+                refresh();
+            }
+        };
+
+        // Keep each panel attached to its own browser window, even when another
+        // window has focus. Polling also updates session progress and video state.
+        void chrome.windows.getCurrent().then(
+            (window) => {
+                if (!active) return;
+                windowId = window.id;
+                refresh();
+            },
+            () => {
+                if (active) {
+                    setStatus(
+                        enabled
+                            ? {
+                                  title: "Unavailable",
+                                  hint: "Couldn't read the active tab.",
+                                  active: false,
+                              }
+                            : OFF,
+                    );
+                }
             },
         );
+        chrome.tabs.onActivated.addListener(onActivated);
+        chrome.tabs.onUpdated.addListener(onUpdated);
+        window.addEventListener("focus", refresh);
+        const interval = window.setInterval(refresh, STATUS_REFRESH_MS);
         return () => {
             active = false;
+            window.clearInterval(interval);
+            window.removeEventListener("focus", refresh);
+            chrome.tabs.onActivated.removeListener(onActivated);
+            chrome.tabs.onUpdated.removeListener(onUpdated);
         };
     }, [enabled, sessionShorts, sessionMinutes]);
 
